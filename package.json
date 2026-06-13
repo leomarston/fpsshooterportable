@@ -1,0 +1,14 @@
+{
+  "name": "fpsshooterportable",
+  "version": "1.0.0",
+  "description": "OPERATION: DESERT STORM — a CS:GO-style browser FPS with a de_dust2-inspired map. Pure WebGL (Three.js), Web Audio synthesized SFX, custom physics and bot AI. No build step, no runtime dependencies.",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.js",
+    "dev": "node serve.js",
+    "check": "node tools/checkall.js"
+  },
+  "keywords": ["fps", "csgo", "three.js", "webgl", "game", "shooter", "de_dust2"],
+  "license": "MIT",
+  "private": true
+}

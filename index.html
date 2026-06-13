@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0c0a07" />
+<title>OPERATION: DESERT STORM</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23c2a05a'/><path d='M8 2v12M2 8h12' stroke='%23161310' stroke-width='1.4'/></svg>" />
+<link rel="stylesheet" href="styles/main.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/addons/"
+  }
+}
+</script>
+</head>
+<body>
+  <!-- WebGL viewport -->
+  <canvas id="viewport"></canvas>
+
+  <!-- ===================== In-game HUD ===================== -->
+  <div id="hud" class="hidden" aria-hidden="true">
+    <!-- Dynamic crosshair -->
+    <div id="crosshair">
+      <span class="ch ch-t"></span><span class="ch ch-b"></span>
+      <span class="ch ch-l"></span><span class="ch ch-r"></span>
+      <span class="ch-dot"></span>
+    </div>
+    <!-- Hit marker -->
+    <div id="hitmarker">
+      <span></span><span></span><span></span><span></span>
+    </div>
+    <!-- Damage direction indicators -->
+    <div id="damage-dirs"></div>
+    <!-- Low-health / damage vignette -->
+    <div id="vignette"></div>
+    <!-- Scope overlay (sniper) -->
+    <div id="scope" class="hidden">
+      <div class="scope-lens">
+        <div class="scope-h"></div><div class="scope-v"></div>
+      </div>
+      <div class="scope-mask scope-top"></div>
+      <div class="scope-mask scope-bottom"></div>
+      <div class="scope-mask scope-left"></div>
+      <div class="scope-mask scope-right"></div>
+    </div>
+
+    <!-- Top: round / objective banner -->
+    <div id="top-bar">
+      <div id="round-pill"><span id="round-label">ROUND</span><span id="round-num">1</span></div>
+      <div id="objective">Eliminate all hostiles</div>
+      <div id="enemy-counter"><span class="ec-icon"></span><span id="enemies-left">0</span></div>
+    </div>
+
+    <!-- Kill feed -->
+    <div id="killfeed"></div>
+
+    <!-- Bottom-left: health + armor -->
+    <div id="vitals">
+      <div class="vital health">
+        <svg viewBox="0 0 24 24" class="vital-ico"><path d="M12 21s-7-4.6-9.3-9.2C1 8.6 2.6 5 6 5c2 0 3.2 1.2 4 2.4C10.8 6.2 12 5 14 5c3.4 0 5 3.6 3.3 6.8C19 16.4 12 21 12 21z"/></svg>
+        <span id="health-val">100</span>
+      </div>
+      <div class="vital armor">
+        <svg viewBox="0 0 24 24" class="vital-ico"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5l8-3z"/></svg>
+        <span id="armor-val">100</span>
+      </div>
+    </div>
+
+    <!-- Bottom-right: ammo + weapon -->
+    <div id="ammo-block">
+      <div id="weapon-name">AK-47</div>
+      <div id="ammo-counts">
+        <span id="ammo-mag">30</span><span class="ammo-div">/</span><span id="ammo-reserve">90</span>
+      </div>
+      <div id="reload-hint" class="hidden">PRESS <b>R</b> TO RELOAD</div>
+      <div id="weapon-slots"></div>
+    </div>
+
+    <!-- Bottom-center: score / kills -->
+    <div id="scoreboard-mini">
+      <div class="sm-item"><span class="sm-k" id="kills-val">0</span><span class="sm-l">KILLS</span></div>
+      <div class="sm-item"><span class="sm-k" id="score-val">0</span><span class="sm-l">SCORE</span></div>
+      <div class="sm-item"><span class="sm-k" id="streak-val">0</span><span class="sm-l">STREAK</span></div>
+    </div>
+
+    <!-- Minimap / radar -->
+    <div id="radar">
+      <canvas id="radar-canvas" width="220" height="220"></canvas>
+      <div class="radar-ring"></div>
+    </div>
+
+    <!-- Center announcements (round start / win / lose) -->
+    <div id="announce"></div>
+  </div>
+
+  <!-- ===================== Menus ===================== -->
+  <div id="menu" class="overlay">
+    <div class="bg-haze"></div>
+    <div class="menu-inner">
+      <h1 class="game-title">OPERATION<span>DESERT STORM</span></h1>
+      <p class="tagline">Tactical browser FPS — clear the site, survive the rounds.</p>
+      <div class="menu-buttons">
+        <button id="btn-play" class="btn btn-primary">DEPLOY</button>
+        <button id="btn-howto" class="btn">BRIEFING</button>
+        <button id="btn-settings" class="btn">SETTINGS</button>
+      </div>
+      <div id="loadprog" class="loadprog hidden"><div class="bar"><i></i></div><span>Forging assets…</span></div>
+      <div class="menu-foot">Headphones recommended · Desktop + mouse required</div>
+    </div>
+  </div>
+
+  <!-- Briefing -->
+  <div id="briefing" class="overlay hidden">
+    <div class="panel">
+      <h2>MISSION BRIEFING</h2>
+      <div class="brief-grid">
+        <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><p>Move</p></div>
+        <div><kbd>MOUSE</kbd><p>Aim / look</p></div>
+        <div><kbd>L-CLICK</kbd><p>Fire</p></div>
+        <div><kbd>R-CLICK</kbd><p>Aim / scope</p></div>
+        <div><kbd>R</kbd><p>Reload</p></div>
+        <div><kbd>SHIFT</kbd><p>Walk (silent)</p></div>
+        <div><kbd>CTRL</kbd><p>Crouch</p></div>
+        <div><kbd>SPACE</kbd><p>Jump</p></div>
+        <div><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><p>Switch weapon</p></div>
+        <div><kbd>Q</kbd><p>Quick-swap</p></div>
+        <div><kbd>G</kbd><p>Drop / pickup</p></div>
+        <div><kbd>ESC</kbd><p>Pause</p></div>
+      </div>
+      <p class="brief-note">Win each round by eliminating every hostile. Each round
+        spawns more enemies with sharper aim. Headshots deal massive damage — and so do theirs.</p>
+      <button class="btn btn-primary close-overlay" data-close="briefing">GOT IT</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings" class="overlay hidden">
+    <div class="panel">
+      <h2>SETTINGS</h2>
+      <div class="setting"><label>Mouse sensitivity <output id="out-sens">1.00</output></label>
+        <input id="set-sens" type="range" min="0.2" max="4" step="0.05" value="1" /></div>
+      <div class="setting"><label>Field of view <output id="out-fov">90</output></label>
+        <input id="set-fov" type="range" min="70" max="110" step="1" value="90" /></div>
+      <div class="setting"><label>Master volume <output id="out-vol">70</output></label>
+        <input id="set-vol" type="range" min="0" max="100" step="1" value="70" /></div>
+      <div class="setting"><label>Graphics quality</label>
+        <select id="set-quality"><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
+      <div class="setting checkbox"><label><input id="set-bloom" type="checkbox" checked /> Bloom &amp; post-FX</label></div>
+      <div class="setting checkbox"><label><input id="set-invert" type="checkbox" /> Invert mouse Y</label></div>
+      <button class="btn btn-primary close-overlay" data-close="settings">SAVE</button>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div id="pause" class="overlay hidden">
+    <div class="panel">
+      <h2>PAUSED</h2>
+      <div class="menu-buttons">
+        <button id="btn-resume" class="btn btn-primary">RESUME</button>
+        <button id="btn-pause-settings" class="btn">SETTINGS</button>
+        <button id="btn-quit" class="btn btn-danger">ABANDON MISSION</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Round transition -->
+  <div id="round-screen" class="overlay hidden">
+    <div class="round-card">
+      <div id="rs-title">ROUND CLEARED</div>
+      <div id="rs-sub">Hostiles eliminated</div>
+      <div id="rs-stats" class="rs-stats"></div>
+      <div id="rs-next">Next wave in <b id="rs-count">5</b></div>
+      <button id="btn-next-round" class="btn btn-primary">DEPLOY NOW</button>
+    </div>
+  </div>
+
+  <!-- Death / game over -->
+  <div id="gameover" class="overlay hidden">
+    <div class="panel gameover">
+      <h2 id="go-title">YOU WERE ELIMINATED</h2>
+      <div id="go-stats" class="rs-stats"></div>
+      <div class="menu-buttons">
+        <button id="btn-retry" class="btn btn-primary">REDEPLOY</button>
+        <button id="btn-menu" class="btn">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Click-to-lock prompt -->
+  <div id="lock-prompt" class="overlay hidden">
+    <div class="lock-inner">
+      <div class="lock-ico">🎯</div>
+      <p>Click to lock mouse &amp; play</p>
+      <small>Press ESC to pause</small>
+    </div>
+  </div>
+
+  <noscript><div class="overlay"><div class="panel"><h2>JavaScript required</h2><p>This game needs JavaScript and WebGL.</p></div></div></noscript>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
