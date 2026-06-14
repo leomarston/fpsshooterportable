@@ -28,6 +28,7 @@ try {
   await new Promise(r => setTimeout(r, 400));
 
   const spots = [
+    { name: 'topdown', topdown: true },
     { name: 'mid',    x: 0,   z: 26, tx: 0,  tz: -10, pitch: 0.02 },
     { name: 'asite',  x: 22,  z: 28, tx: 33, tz: 40,  pitch: -0.05 },
     { name: 'bsite',  x: -20, z: 30, tx: -30, tz: 36, pitch: -0.05 },
@@ -37,7 +38,21 @@ try {
 
   for (const s of spots) {
     await page.evaluate((s) => {
-      const g = window.__game, THREE = g.engine.scene.constructor;
+      const g = window.__game;
+      g.state = 'paused';   // stop the rAF loop from overwriting our camera
+      if (g._fog === undefined) g._fog = g.engine.scene.fog;
+      if (s.topdown) {
+        const cam = g.engine.camera;
+        cam.position.set(-4, 125, -4);
+        cam.rotation.set(-Math.PI / 2, 0, 0, 'YXZ');
+        cam.updateMatrixWorld(true);
+        g.engine.scene.fog = null;            // no haze for the overview
+        if (g.weapons.currentModel) g.weapons.currentModel.group.visible = false;
+        g.hud.hide();
+        return;
+      }
+      g.engine.scene.fog = g._fog;
+      if (g.weapons.currentModel) g.weapons.currentModel.group.visible = true;
       const gy = g.world.groundHeight(s.x, s.z, 30);
       g.player.feet.set(s.x, gy, s.z);
       g.player.vel.set(0, 0, 0);
@@ -45,6 +60,7 @@ try {
       g.player.pitch = s.pitch;
       g.player._updateCamera(0.016);
       g.audio.setListener(g.engine.camera);
+      g.hud.show();
       // drive the HUD so the screenshot reflects a live layout
       g.hud.setHealth(g.player.health); g.hud.setArmor(g.player.armor);
       g.hud.setKills(7); g.hud.setEnemies(g.enemyMgr.aliveCount); g.hud.setScore(2150); g.hud.setStreak(3);
