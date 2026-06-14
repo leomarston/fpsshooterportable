@@ -13,7 +13,7 @@ import { MapBuilder } from '../world/MapBuilder.js';
 import { Nav } from '../world/Nav.js';
 import { Player } from '../entities/Player.js';
 import { WeaponManager } from '../entities/Weapon.js';
-import { WEAPONS } from '../entities/WeaponData.js';
+import { WEAPONS, EQUIPMENT, MONEY_START, MONEY_MAX } from '../entities/WeaponData.js';
 import { Combat } from '../entities/Combat.js';
 import { EnemyManager } from '../entities/Enemy.js';
 import { FX } from '../fx/FX.js';
@@ -28,7 +28,7 @@ export class Game {
     this.hud = hud;
     this.menus = menus;
 
-    this.state = 'menu';     // menu | playing | roundend | dead | paused
+    this.state = 'menu';     // menu | buy | playing | roundend | dead | paused
     this.round = 0;
     this.kills = 0;
     this.score = 0;
@@ -39,6 +39,13 @@ export class Game {
     this._deathTimer = 0;
     this._endDelay = 0;
     this.built = false;
+
+    // economy / loadout
+    this.money = MONEY_START;
+    this.owned = { primary: null, pistol: 'glock', armor: 0, helmet: false };
+    this._buyEnd = 0;        // performance.now() when buy time ends
+    this.buyMenu = null;     // set by main.js
+    this.buyDuration = 22;   // seconds of buy time per round
   }
 
   async build(onProgress) {
@@ -95,9 +102,12 @@ export class Game {
     this.combat.onKill = (enemy, weapon, headshot) => {
       this.kills++; this.totalKills++; this.streak++;
       if (headshot) this.headshots++;
-      const pts = (headshot ? 150 : 100) + this.streak * 10;
-      this.score += pts;
-      this.hud.setKills(this.kills); this.hud.setScore(this.score); this.hud.setStreak(this.streak);
+      this.score += (headshot ? 150 : 100) + this.streak * 10;
+      // money reward (weapon-specific, headshot bonus)
+      const reward = (weapon.killReward || 300) + (headshot ? 100 : 0);
+      this.money = Math.min(MONEY_MAX, this.money + reward);
+      this.hud.setKills(this.kills); this.hud.setMoney(this.money); this.hud.setStreak(this.streak);
+      this.hud.moneyGain(reward);
       this.hud.killfeed('YOU', 'HOSTILE', weapon.name, headshot);
       this.hud.setEnemies(this.enemyMgr.aliveCount);
       if (this.streak === 3) this.hud.announce('TRIPLE KILL', '', 1200, '#ffd23d');
@@ -118,8 +128,10 @@ export class Game {
   startGame() {
     this.round = 0; this.kills = 0; this.score = 0; this.streak = 0;
     this.totalKills = 0; this.headshots = 0;
+    this.money = MONEY_START;
+    this.owned = { primary: null, pistol: 'glock', armor: 0, helmet: false };
     this.enemyMgr.clearAll();
-    this.hud.setKills(0); this.hud.setScore(0); this.hud.setStreak(0);
+    this.hud.setKills(0); this.hud.setMoney(this.money); this.hud.setStreak(0);
     this.hud.show();
     this.audio.startAmbient();
     this.nextRound();
@@ -127,7 +139,6 @@ export class Game {
 
   nextRound() {
     this.round++;
-    this.state = 'playing';
     this.menus.hideAll();
     this.menus.hideLock();
 
@@ -135,38 +146,101 @@ export class Game {
     const spawn = this._pickPlayerSpawn();
     this.player.reset(spawn);
     this.player.setLookFrom(new THREE.Vector3(0, 1.6, 0));
+    this.player.armor = this.owned.armor;
+    this.player._updateCamera(0.016);
 
-    // loadout for the round
-    this.weapons.give(this._loadout(this.round), true);
+    // give the owned loadout (top up ammo), default pistol + knife always
+    this._applyOwned(true);
     this.weapons.setBaseFov(this.menus.settings.fov);
 
-    // spawn the wave
+    // spawn the wave (frozen until the buy phase ends / player deploys)
     const diff = this._difficulty(this.round);
     this._spawnWave(diff);
 
     this._roundStart = performance.now();
+    this._buyEnd = performance.now() + this.buyDuration * 1000;
     this.hud.setRound(this.round);
-    this.hud.setObjective(`Eliminate ${this.enemyMgr.aliveCount} hostiles`);
+    this.hud.setMoney(this.money);
     this.hud.setEnemies(this.enemyMgr.aliveCount);
-    this.hud.announce(`ROUND ${this.round}`, this.round === 1 ? 'ENGAGE' : 'WAVE INCOMING', 1800, '#e7c878');
     this.audio.stinger('roundstart');
     this._endDelay = 0;
+
+    // open the buy phase
+    this.openBuy(true);
+  }
+
+  /* ------------------------------ economy / buy ------------------------------ */
+
+  canBuy() { return (this._buyEnd - performance.now()) > 0; }
+  buyTimeLeft() { return Math.max(0, (this._buyEnd - performance.now()) / 1000); }
+
+  openBuy(roundStart = false) {
+    if (this.state === 'buy') return;
+    if (!roundStart && !this.canBuy()) { this.hud.announce('BUY TIME OVER', '', 900, '#e0413a'); return; }
+    this._returnState = roundStart ? 'playing' : this.state;
+    this.state = 'buy';
+    this.input.exitLock();
+    this.buyMenu?.open(this);
+  }
+  closeBuy() {
+    if (this.state !== 'buy') return;
+    this.state = 'playing';
+    this.buyMenu?.close();
+    if (this.round === 1 && !this._engaged) {
+      this._engaged = true;
+      this.hud.announce(`ROUND ${this.round}`, 'ENGAGE', 1500, '#e7c878');
+    }
+  }
+
+  buyWeapon(key) {
+    const w = WEAPONS[key];
+    if (!w || !this.canBuy()) return false;
+    if ((w.slot === 1 && this.owned.primary === key) || (w.slot === 2 && this.owned.pistol === key)) return false;
+    if (this.money < w.price) { this.audio.ui('back'); return false; }
+    this.money -= w.price;
+    if (w.slot === 1) this.owned.primary = key; else if (w.slot === 2) this.owned.pistol = key;
+    this._applyOwned(false);
+    this.weapons.equip(key);
+    this.hud.setMoney(this.money);
+    this.audio.ui('click');
+    return true;
+  }
+  buyArmor(kind) {
+    const e = EQUIPMENT[kind];
+    if (!e || !this.canBuy()) return false;
+    const already = this.owned.armor >= 100 && (e.helmet ? this.owned.helmet : true);
+    if (already) return false;
+    if (this.money < e.price) { this.audio.ui('back'); return false; }
+    this.money -= e.price;
+    this.owned.armor = e.armor; this.owned.helmet = e.helmet;
+    this.player.armor = e.armor; this.player.maxArmor = 100;
+    this.hud.setArmor(this.player.armor);
+    this.hud.setMoney(this.money);
+    this.audio.ui('click');
+    return true;
+  }
+  _applyOwned(refill) {
+    const list = [this.owned.primary, this.owned.pistol, 'knife'].filter(Boolean);
+    this.weapons.give(list, refill);
   }
 
   _endRoundWin() {
     this.state = 'roundend';
     this.audio.stinger('win');
-    this.hud.announce('ROUND CLEARED', '', 1600, '#36c46a');
-    this._roundCountdown = 6;
-    const acc = this.totalKills ? Math.round(this.headshots / this.totalKills * 100) : 0;
+    // round-clear cash bonus
+    const bonus = 2000 + (this.round - 1) * 300;
+    this.money = Math.min(MONEY_MAX, this.money + bonus);
+    this.hud.setMoney(this.money);
+    this.hud.announce('ROUND CLEARED', `+$${bonus}`, 1800, '#36c46a');
+    this._roundCountdown = 7;
     this.menus.showRound({
       title: `ROUND ${this.round} CLEARED`,
-      sub: 'All hostiles eliminated',
+      sub: `Reward +$${bonus}`,
       stats: [
         { v: this.round, l: 'ROUND' },
         { v: this.kills, l: 'ROUND KILLS' },
-        { v: this.score, l: 'SCORE' },
-        { v: acc + '%', l: 'HS RATE' },
+        { v: '$' + this.money, l: 'BALANCE' },
+        { v: this.totalKills, l: 'TOTAL KILLS' },
       ],
     });
     this.input.exitLock();
@@ -240,10 +314,10 @@ export class Game {
   }
 
   _enemyPool(round) {
-    if (round <= 1) return ['pistol', 'smg'];
-    if (round <= 3) return ['smg', 'pistol', 'ar47'];
-    if (round <= 5) return ['ar47', 'm4x', 'smg'];
-    return ['ar47', 'm4x', 'sniper', 'shotgun', 'smg'];
+    if (round <= 1) return ['glock', 'mp5'];
+    if (round <= 3) return ['mp5', 'glock', 'ak47'];
+    if (round <= 5) return ['ak47', 'm4', 'mp5'];
+    return ['ak47', 'm4', 'awp', 'shotgun', 'mp5', 'deagle'];
   }
 
   _prefRange(type) {
@@ -312,19 +386,18 @@ export class Game {
     return p.z > -2 ? 'MID' : 'T MID';
   }
 
-  _loadout(round) {
-    let primary = 'smg';
-    if (round >= 5) primary = 'm4x';
-    else if (round >= 3) primary = 'ar47';
-    // give a sniper or shotgun variety on later rounds as the slot-1 sometimes
-    if (round >= 6 && round % 3 === 0) primary = (round % 2 === 0) ? 'sniper' : 'shotgun';
-    return [primary, 'pistol', 'knife'];
-  }
-
   /* ------------------------------ update ------------------------------ */
 
   update(dt) {
     if (!this.built) return;
+
+    if (this.state === 'buy') {
+      // freeze time: world holds, only the buy menu ticks
+      this.buyMenu?.update();
+      this.hud.setMoney(this.money);
+      this.fx.update(dt);
+      return;
+    }
 
     if (this.state === 'playing') {
       const aiming = this.weapons.adsAmount > 0.3 || this.weapons.scoped;
@@ -344,6 +417,7 @@ export class Game {
       this.hud.updateRadar(this.player, this.enemyMgr.enemies, this.mapInfo.sites);
       this.hud.setEnemies(this.enemyMgr.aliveCount);
       this.hud.setLocation(this._zoneName(this.player.feet));
+      this.hud.setBuyTime(this.canBuy() ? this.buyTimeLeft() : 0);
 
       // round end?
       if (this.enemyMgr.aliveCount === 0) {
@@ -379,8 +453,8 @@ export class Game {
     if (best) {
       const key = Object.keys(WEAPONS).find(k => WEAPONS[k] === best.cfg.weapon);
       if (key && WEAPONS[key].slot === 1) {
-        const list = [key, 'pistol', 'knife'];
-        this.weapons.give(list, false);
+        this.owned.primary = key;
+        this._applyOwned(false);
         this.weapons.equip(key);
         this.hud.announce(`PICKED UP ${WEAPONS[key].name}`, '', 900, '#e7c878');
       }

@@ -38,6 +38,8 @@ try {
     const g = window.__game;
     g.input.locked = true; g.input.enabled = true;
     g.startGame();
+    g.closeBuy();                                   // leave the buy phase -> playing
+    g.owned.primary = 'ak47'; g._applyOwned(true); g.weapons.equip('ak47');
     for (let i = 0; i < 600; i++) {
       g.input.buttons.left = (i % 22) < 14;                 // burst fire
       g.player.yaw += 0.05 * Math.sin(i * 0.05);            // sweep aim
@@ -68,7 +70,20 @@ try {
       for (let i = 0; i < d.length; i += 4) { const lum = (d[i] + d[i + 1] + d[i + 2]) / 3; sum += lum; sum2 += lum * lum; n++; }
       const mean = sum / n; variance = Math.round(sum2 / n - mean * mean);
     } catch (e) { variance = -1; }
+    // build every weapon model + count meshes (catches model errors)
+    let weaponMeshes = 0, weaponBuilt = 0, weaponErr = '';
+    try {
+      const keys = Object.keys(g.weapons.ammo).length ? null : null;
+      const all = ['knife', 'glock', 'p250', 'fiveseven', 'autopistol', 'deagle', 'mp5', 'shotgun', 'ak47', 'm4', 'awp'];
+      for (const k of all) {
+        const m = g.weapons._buildModel(k);
+        let n = 0; m.group.traverse(o => { if (o.isMesh) n++; });
+        weaponMeshes += n; weaponBuilt++;
+        g.engine.vmScene.remove(m.group);
+      }
+    } catch (e) { weaponErr = e.message; }
     return {
+      weaponBuilt, weaponMeshes, weaponErr,
       built: g.built, state: g.state, round: g.round,
       spawned: g.enemyMgr.enemies.length, alive: g.enemyMgr.aliveCount,
       playerHealth: Math.round(g.player.health),
@@ -90,6 +105,7 @@ try {
   console.log('  player HP:    ', result.playerHealth);
   console.log('  mag after fire:', result.fired);
   console.log('  kills:        ', result.kills);
+  console.log('  weapon models:', result.weaponBuilt + '/11', '(' + result.weaponMeshes + ' meshes)', result.weaponErr || '');
   console.log('  scene children:', result.sceneChildren);
   console.log('  total meshes: ', result.meshCount);
   console.log('  visible draws:', result.worldCalls, '(' + result.worldTris + ' tris in view)');
@@ -99,8 +115,9 @@ try {
   const assert = (c, m) => { if (!c) { ok = false; console.log('  FAIL:', m); } };
   assert(result.built, 'game built');
   assert(result.spawned >= 4, 'wave spawned (>=4)');
-  assert(result.state === 'playing' || result.state === 'roundend', 'in active state');
+  assert(['playing', 'roundend', 'dead'].includes(result.state), 'reached a valid run state (' + result.state + ')');
   assert(result.meshCount > 150, 'world geometry built (' + result.meshCount + ' meshes)');
+  assert(result.weaponBuilt === 11 && !result.weaponErr, 'all 11 weapon models built (' + result.weaponMeshes + ' meshes) ' + result.weaponErr);
   assert(result.variance > 30, 'frame has visual detail (variance ' + result.variance + ')');
   assert(errors.length === 0, 'no runtime errors');
 

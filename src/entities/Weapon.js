@@ -10,6 +10,7 @@
  */
 import * as THREE from 'three';
 import { WEAPONS } from './WeaponData.js';
+import { buildWeaponModel } from './WeaponModels.js';
 
 const VM_BASE = new THREE.Vector3(0.2, -0.2, -0.55);
 
@@ -424,9 +425,10 @@ export class WeaponManager {
     const p = this.currentModel.parts;
     if (!p) return;
     if (this.pumpT > 0) { this.pumpT += dt * 2.6; if (this.pumpT >= 1) this.pumpT = 0; }
-    if (p.slide) p.slide.position.z = p.slideZ + this.actionT * 0.05;     // pistol blowback
-    if (p.bolt) p.bolt.position.z = p.boltZ + this.actionT * 0.035;       // rifle/sniper bolt
-    if (p.pump) p.pump.position.z = p.pumpZ + Math.sin(this.pumpT * Math.PI) * 0.12; // shotgun rack
+    // parts reciprocate along the gun's length (design-space X, toward shooter)
+    if (p.slide) p.slide.position.x = (p.slideBase ?? 0) - this.actionT * 0.04;   // pistol blowback
+    if (p.bolt) p.bolt.position.x = (p.boltBase ?? 0) - this.actionT * 0.03;      // rifle/sniper bolt
+    if (p.pump) p.pump.position.x = (p.pumpBase ?? 0) - Math.sin(this.pumpT * Math.PI) * 0.1; // shotgun rack
   }
 
   addLookSway(dx, dy) { this.swayX += -dx * 0.0006; this.swayY += dy * 0.0006; }
@@ -440,116 +442,10 @@ export class WeaponManager {
   /* --------------------------- viewmodel builders --------------------------- */
 
   _buildModel(key) {
-    const w = WEAPONS[key];
-    const g = new THREE.Group();
-    const black = new THREE.MeshStandardMaterial({ color: 0x1c1e22, metalness: 0.6, roughness: 0.45 });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.7, roughness: 0.4 });
-    const wood = new THREE.MeshStandardMaterial({ color: 0x6b4524, metalness: 0.1, roughness: 0.8 });
-    const accent = new THREE.MeshStandardMaterial({ color: w.view.accent, metalness: 0.5, roughness: 0.5 });
-    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.92, roughness: 0.28, envMapIntensity: 1.1 });
-    const muzzle = new THREE.Object3D();
-    const parts = {};
-    // give the viewmodel reflections from the world environment
-    [black, dark, accent].forEach(m => { m.envMapIntensity = 1.0; });
-
-    const addBox = (x, y, z, sx, sy, sz, mat, rot = 0) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
-      m.position.set(x, y, z); if (rot) m.rotation.z = rot; g.add(m); return m;
-    };
-    const addCyl = (x, y, z, r1, r2, h, mat, axis = 'z') => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, 14), mat);
-      m.position.set(x, y, z);
-      if (axis === 'z') m.rotation.x = Math.PI / 2;
-      else if (axis === 'x') m.rotation.z = Math.PI / 2;
-      g.add(m); return m;
-    };
-    const sight = (z) => { addBox(0, 0.075, z, 0.012, 0.03, 0.02, steel); };
-
-    switch (w.view.kind) {
-      case 'knife': {
-        addBox(0, 0, 0.05, 0.04, 0.12, 0.16, dark);           // handle
-        addBox(0, 0.02, -0.16, 0.012, 0.05, 0.28, steel);     // blade
-        addBox(0, 0.05, -0.1, 0.006, 0.02, 0.16, steel);      // edge bevel
-        muzzle.position.set(0, 0.02, -0.32);
-        break;
-      }
-      case 'pistol': {
-        addBox(0, -0.02, 0, 0.05, 0.14, 0.1, dark);            // grip
-        parts.slide = addBox(0, 0.05, -0.12, 0.052, 0.062, 0.26, black); parts.slideZ = -0.12; // slide
-        addBox(0, 0.02, -0.18, 0.03, 0.03, 0.12, steel);       // barrel
-        addBox(0, -0.08, 0.0, 0.04, 0.12, 0.04, dark);         // mag base
-        sight(-0.22); sight(-0.02);
-        muzzle.position.set(0, 0.04, -0.26);
-        break;
-      }
-      case 'smg': {
-        addBox(0, 0, -0.05, 0.05, 0.08, 0.34, black);          // body
-        addBox(0, -0.12, 0.02, 0.045, 0.18, 0.05, dark);       // mag
-        addBox(0, -0.04, 0.12, 0.045, 0.1, 0.08, dark);        // grip
-        addBox(0, 0.02, 0.2, 0.04, 0.05, 0.14, dark);          // stock
-        addCyl(0, 0.02, -0.26, 0.018, 0.018, 0.14, steel);     // barrel
-        parts.bolt = addBox(0.052, 0.04, -0.02, 0.018, 0.025, 0.08, steel); parts.boltZ = -0.02; // charging handle
-        sight(-0.2);
-        muzzle.position.set(0, 0.02, -0.34);
-        break;
-      }
-      case 'rifle_ak': {
-        addBox(0, 0, -0.04, 0.05, 0.08, 0.42, dark);           // receiver
-        addBox(0, 0.01, -0.28, 0.045, 0.06, 0.2, wood);        // handguard
-        addCyl(0, 0.02, -0.42, 0.016, 0.016, 0.16, steel);     // barrel
-        const mag = addBox(0, -0.14, 0.0, 0.045, 0.2, 0.09, dark); mag.rotation.x = 0.5; // curved mag
-        addBox(0, -0.05, 0.16, 0.045, 0.1, 0.08, wood);        // grip
-        addBox(0, 0.0, 0.28, 0.05, 0.07, 0.2, wood);           // stock
-        parts.bolt = addBox(0.05, 0.045, -0.06, 0.02, 0.03, 0.07, steel); parts.boltZ = -0.06; // charging handle
-        addBox(0, 0.07, -0.42, 0.01, 0.03, 0.02, steel);       // front post
-        sight(0.0);
-        muzzle.position.set(0, 0.02, -0.52);
-        break;
-      }
-      case 'rifle_m4': {
-        addBox(0, 0, -0.04, 0.05, 0.08, 0.44, black);          // receiver
-        addCyl(0, 0.02, -0.4, 0.022, 0.022, 0.22, dark);       // handguard tube
-        addCyl(0, 0.02, -0.52, 0.014, 0.014, 0.12, steel);     // barrel
-        addBox(0, 0.06, -0.06, 0.02, 0.04, 0.18, dark);        // carry rail
-        addBox(0, -0.13, 0.02, 0.045, 0.18, 0.08, dark);       // mag
-        addBox(0, -0.05, 0.16, 0.045, 0.1, 0.08, dark);        // grip
-        addBox(0, 0.0, 0.3, 0.05, 0.08, 0.22, dark);           // stock
-        parts.bolt = addBox(0.05, 0.05, -0.02, 0.02, 0.025, 0.06, steel); parts.boltZ = -0.02; // forward assist/bolt
-        addBox(0, 0.09, -0.16, 0.02, 0.03, 0.05, dark);        // rear sight
-        muzzle.position.set(0, 0.02, -0.6);
-        break;
-      }
-      case 'sniper': {
-        addBox(0, 0, 0.0, 0.05, 0.08, 0.5, accent);            // body
-        addCyl(0, 0.02, -0.5, 0.018, 0.018, 0.4, steel);       // long barrel
-        addCyl(0, 0.12, -0.06, 0.035, 0.035, 0.22, black);     // scope tube
-        addCyl(0, 0.12, -0.18, 0.045, 0.045, 0.04, dark);      // scope lens
-        addCyl(0, 0.12, 0.06, 0.04, 0.04, 0.04, dark);         // scope eyepiece
-        addBox(0, -0.05, 0.18, 0.045, 0.12, 0.1, accent);      // grip/cheek
-        addBox(0, 0.0, 0.36, 0.05, 0.08, 0.24, accent);        // stock
-        parts.bolt = addBox(0.06, 0.04, 0.04, 0.02, 0.025, 0.1, steel); parts.boltZ = 0.04; // bolt handle
-        muzzle.position.set(0, 0.02, -0.74);
-        break;
-      }
-      case 'shotgun': {
-        addBox(0, 0, -0.02, 0.055, 0.08, 0.46, wood);          // body
-        addCyl(0, 0.03, -0.34, 0.022, 0.022, 0.34, dark);      // barrel
-        parts.pump = addCyl(0, -0.02, -0.3, 0.027, 0.027, 0.22, dark); parts.pumpZ = -0.3; // pump fore-end
-        addBox(0, -0.01, 0.28, 0.05, 0.09, 0.22, wood);        // stock
-        sight(-0.34);
-        muzzle.position.set(0, 0.03, -0.52);
-        break;
-      }
-      default:
-        addBox(0, 0, 0, 0.06, 0.08, 0.4, dark);
-        muzzle.position.set(0, 0, -0.22);
-    }
-
-    g.add(muzzle);
-    g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
-    g.position.copy(VM_BASE);
-    g.visible = false;
-    this.vmScene.add(g);
-    return { group: g, muzzle, parts, key };
+    const built = buildWeaponModel(WEAPONS[key]);
+    built.group.position.copy(VM_BASE);
+    built.group.visible = false;
+    this.vmScene.add(built.group);
+    return { group: built.group, muzzle: built.muzzle, parts: built.parts, eject: built.eject, key };
   }
 }

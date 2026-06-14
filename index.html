@@ -73,8 +73,9 @@
       <div class="radar-label" id="radar-loc">DUST</div>
     </div>
     <div id="money-box">
-      <div class="money-row"><span class="money-sym">$</span><span id="money-val">0</span></div>
+      <div class="money-row"><span class="money-sym">$</span><span id="money-val">0</span><span id="money-gain"></span></div>
       <div class="money-sub">STREAK <b id="streak-val">0</b></div>
+      <div id="buy-hint" class="hidden">PRESS <b>B</b> TO BUY · <span id="buy-time">0:00</span></div>
     </div>
 
     <!-- Bottom-left: health + armor (CS:GO-style) -->
@@ -178,6 +179,25 @@
         <button id="btn-resume" class="btn btn-primary">RESUME</button>
         <button id="btn-pause-settings" class="btn">SETTINGS</button>
         <button id="btn-quit" class="btn btn-danger">ABANDON MISSION</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buy menu -->
+  <div id="buymenu" class="overlay hidden">
+    <div class="buy-wrap">
+      <div class="buy-head">
+        <div class="buy-title">BUY MENU</div>
+        <div class="buy-money">BALANCE <b id="buy-balance">$0</b></div>
+        <div class="buy-timer">BUY TIME <b id="buy-countdown">0:22</b></div>
+      </div>
+      <div class="buy-cols">
+        <div class="buy-col" id="buy-col-left"></div>
+        <div class="buy-col" id="buy-col-right"></div>
+      </div>
+      <div class="buy-foot">
+        <div class="buy-owned" id="buy-owned"></div>
+        <button id="buy-deploy" class="btn btn-primary">DEPLOY <span class="kbd-mini">B</span></button>
       </div>
     </div>
   </div>

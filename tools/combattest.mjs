@@ -28,14 +28,15 @@ try {
     const g = window.__game;
     const Vec3 = g.player.feet.constructor;
     g.input.locked = true; g.input.enabled = true;
-    g.startGame(); g.enemyMgr.clearAll();
+    g.startGame(); g.closeBuy(); g.enemyMgr.clearAll();
+    g.owned.primary = 'ak47'; g._applyOwned(true); g.weapons.equip('ak47'); // automatic -> held fire
     const px = 0, pz = 40, gy = g.world.groundHeight(px, pz, 30);
     g.player.feet.set(px, gy, pz); g.player.vel.set(0, 0, 0);
     g.player.setLookFrom({ x: 0, y: gy + 1.6, z: 20 }); g.player._updateCamera(0.016);
     const ex = 0, ez = 30, egy = g.world.groundHeight(ex, ez, 30);
     const los = g.world.lineOfSight(new Vec3(px, gy + 1.6, pz), new Vec3(ex, egy + 1.5, ez));
     // harmless bot (never returns fire) to isolate the player->bot direction
-    const cfg = { health: 80, accuracy: 0.0, reaction: 999, moveSpeed: 0, turnSpeed: 8, viewDist: 60, hearing: 30, memory: 4, strafe: 0, damageMult: 0, spread: 0.2, preferredRange: 12, weapon: WEAPONS.pistol, color: 0x553333 };
+    const cfg = { health: 80, accuracy: 0.0, reaction: 999, moveSpeed: 0, turnSpeed: 8, viewDist: 60, hearing: 30, memory: 4, strafe: 0, damageMult: 0, spread: 0.2, preferredRange: 12, weapon: WEAPONS.glock, color: 0x553333 };
     const e = g.enemyMgr.spawn(new Vec3(ex, egy, ez), cfg);
     const startHp = e.health;
     for (let i = 0; i < 180; i++) { g.input.buttons.left = true; g.update(1 / 60); g.input.endFrame(); }
@@ -57,13 +58,13 @@ try {
     const g = window.__game;
     const Vec3 = g.player.feet.constructor;
     // reset to a fresh round/state
-    g.round = 0; g.nextRound(); g.enemyMgr.clearAll();
+    g.round = 0; g.nextRound(); g.closeBuy(); g.enemyMgr.clearAll();
     const px = 0, pz = 40, gy = g.world.groundHeight(px, pz, 30);
     g.player.reset(new Vec3(px, gy, pz)); g.player.armor = 0; // test raw HP damage
     g.player.setLookFrom({ x: 0, y: gy + 1.6, z: 20 }); g.player._updateCamera(0.016);
     g.input.buttons.left = false;                       // player does NOT shoot
     const ex = 0, ez = 30, egy = g.world.groundHeight(ex, ez, 30);
-    const cfg = { health: 400, accuracy: 0.97, reaction: 0.1, moveSpeed: 0.1, turnSpeed: 10, viewDist: 60, hearing: 30, memory: 4, strafe: 0, damageMult: 1.2, spread: 0.01, preferredRange: 12, weapon: WEAPONS.ar47, color: 0x335533 };
+    const cfg = { health: 400, accuracy: 0.97, reaction: 0.1, moveSpeed: 0.1, turnSpeed: 10, viewDist: 60, hearing: 30, memory: 4, strafe: 0, damageMult: 1.2, spread: 0.01, preferredRange: 12, weapon: WEAPONS.ak47, color: 0x335533 };
     const e = g.enemyMgr.spawn(new Vec3(ex, egy, ez), cfg);
     e.aimYaw = Math.atan2(-(px - ex), -(pz - ez));      // face the player up front
     const startHp = g.player.health;

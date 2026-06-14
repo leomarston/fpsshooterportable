@@ -8,6 +8,7 @@ import { Input } from './core/Input.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { Menus } from './ui/Menus.js';
+import { BuyMenu } from './ui/BuyMenu.js';
 import { Game } from './game/Game.js';
 
 const canvas = document.getElementById('viewport');
@@ -17,6 +18,12 @@ const engine = new Engine(canvas, menus.settings.quality);
 const input = new Input(canvas);
 const hud = new HUD();
 const game = new Game(engine, input, audio, hud, menus);
+const buyMenu = new BuyMenu(audio);
+game.buyMenu = buyMenu;
+
+// Closing the buy menu (DEPLOY) drops into the round and re-locks the mouse.
+function deployFromBuy() { game.closeBuy(); input.requestLock(); }
+buyMenu.onClose = deployFromBuy;
 
 input.sensitivity = menus.settings.sensitivity;
 input.invertY = menus.settings.invertY;
@@ -53,8 +60,12 @@ document.getElementById('lock-prompt').addEventListener('click', tryLock);
 
 addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
-    if (game.state === 'playing') game.pause();
+    if (game.state === 'buy') deployFromBuy();
+    else if (game.state === 'playing') game.pause();
     else if (game.state === 'paused') resumeGame();
+  } else if (e.code === 'KeyB') {
+    if (game.state === 'playing') game.openBuy();
+    else if (game.state === 'buy') deployFromBuy();
   }
 });
 addEventListener('blur', () => { if (game.state === 'playing') game.pause(); });
@@ -73,16 +84,15 @@ menus.on('play', async () => {
   if (!game.built) { await ensureBuilt(); }
   applySettings(menus.settings);
   menus.hideAll();
-  game.startGame();
-  input.requestLock();
+  game.startGame();          // opens the buy menu (round 1 buy phase)
 });
 
 function resumeGame() { game.resume(); input.requestLock(); }
 menus.on('resume', resumeGame);
 menus.on('quit', () => game.quitToMenu());
-menus.on('retry', () => { audio.resume(); applySettings(menus.settings); game.startGame(); input.requestLock(); });
+menus.on('retry', () => { audio.resume(); applySettings(menus.settings); game.startGame(); });
 menus.on('mainmenu', () => game.quitToMenu());
-menus.on('nextround', () => { game.nextRound(); input.requestLock(); });
+menus.on('nextround', () => { game.nextRound(); });   // opens buy phase
 menus.on('settings', (s, key) => applySettings(s, key));
 menus.on('closeOverlay', (id) => {
   // returning from settings while paused -> keep pause menu visible
@@ -102,8 +112,8 @@ function loop(now) {
   if (game.state === 'playing') {
     if (input.locked) { input.enabled = true; menus.hideLock(); shouldUpdate = true; }
     else { input.enabled = false; menus.showLock(); }
-  } else if (game.state === 'roundend' || game.state === 'dead') {
-    input.enabled = false; shouldUpdate = true;
+  } else if (game.state === 'roundend' || game.state === 'dead' || game.state === 'buy') {
+    input.enabled = false; shouldUpdate = true;   // buy: world frozen, menu ticks
   } else {
     input.enabled = false;
   }

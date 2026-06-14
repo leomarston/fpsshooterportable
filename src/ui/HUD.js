@@ -67,7 +67,8 @@ export class HUD {
       weaponIcon: $('weapon-icon'), weaponName: $('weapon-name'),
       ammoMag: $('ammo-mag'), ammoReserve: $('ammo-reserve'),
       ammoTicks: $('ammo-ticks'), reloadHint: $('reload-hint'), weaponSlots: $('weapon-slots'),
-      moneyVal: $('money-val'), streak: $('streak-val'),
+      moneyVal: $('money-val'), moneyGain: $('money-gain'), streak: $('streak-val'),
+      buyHint: $('buy-hint'), buyTime: $('buy-time'),
       radar: $('radar-canvas'), radarLoc: $('radar-loc'), announce: $('announce'),
     };
     this.rctx = this.el.radar.getContext('2d');
@@ -140,8 +141,21 @@ export class HUD {
   setObjective() { /* layout has no objective line; kept for API compatibility */ }
   setEnemies(c) { this.el.scoreT.textContent = c; }
   setKills(k) { this.el.scoreCT.textContent = k; }
-  setScore(s) { this.el.moneyVal.textContent = s; }
+  setMoney(m) { this.el.moneyVal.textContent = m; }
+  setScore(m) { this.el.moneyVal.textContent = m; }   // alias (tools)
   setStreak(s) { this.el.streak.textContent = s; }
+  moneyGain(amount) {
+    const g = this.el.moneyGain; if (!g) return;
+    g.textContent = '+' + amount;
+    g.classList.remove('show'); void g.offsetWidth; g.classList.add('show');
+  }
+  setBuyTime(secs) {
+    const h = this.el.buyHint; if (!h) return;
+    if (secs > 0) {
+      h.classList.remove('hidden');
+      this.el.buyTime.textContent = '0:' + String(Math.ceil(secs)).padStart(2, '0');
+    } else h.classList.add('hidden');
+  }
   setLocation(name) { if (this.el.radarLoc) this.el.radarLoc.textContent = name; }
 
   setCrosshair(inaccuracy, fovDeg) {

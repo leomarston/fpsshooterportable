@@ -24,7 +24,7 @@ try {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load', timeout: 30000 });
   await page.waitForFunction('window.__game && window.__game.built === true', { timeout: 40000 });
 
-  await page.evaluate(() => { const g = window.__game; g.input.locked = true; g.input.enabled = true; g.startGame(); g.input.buttons.left = false; });
+  await page.evaluate(() => { const g = window.__game; g.input.locked = true; g.input.enabled = true; g.startGame(); g.closeBuy(); g.input.buttons.left = false; });
   await new Promise(r => setTimeout(r, 400));
 
   const spots = [

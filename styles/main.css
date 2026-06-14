@@ -262,3 +262,54 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
   .brief-grid{grid-template-columns:repeat(2,1fr)}
   #radar{display:none}
 }
+
+/* ===================== Money gain + buy hint ===================== */
+#money-gain{color:var(--good);font-size:15px;font-weight:700;margin-left:6px;opacity:0}
+#money-gain.show{animation:moneypop 1s ease-out}
+@keyframes moneypop{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-14px)}}
+#buy-hint{font-size:10px;letter-spacing:.1em;color:var(--warn);margin-top:3px}
+#buy-hint b{color:#fff;background:#2a2317;padding:0 4px;border:1px solid var(--line);border-radius:2px}
+
+/* ========================= Buy menu ========================= */
+#buymenu{z-index:45}
+.buy-wrap{width:min(1000px,94vw);background:var(--panel);border:1px solid var(--line);
+  border-top:3px solid var(--sand);box-shadow:0 24px 80px #000c;backdrop-filter:blur(2px);
+  padding:0;overflow:hidden}
+.buy-head{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;background:linear-gradient(180deg,#241f15,#1b1712);border-bottom:1px solid var(--line)}
+.buy-title{font-size:22px;font-weight:700;letter-spacing:.2em;color:#fff}
+.buy-money{font-size:13px;letter-spacing:.14em;color:var(--text-dim)}
+.buy-money b{font-size:22px;color:var(--good);margin-left:8px;font-variant-numeric:tabular-nums}
+.buy-timer{font-size:13px;letter-spacing:.14em;color:var(--text-dim)}
+.buy-timer b{font-size:20px;color:var(--sand-bright);margin-left:8px;font-variant-numeric:tabular-nums}
+#buymenu.timeup .buy-timer b{color:var(--danger)}
+
+.buy-cols{display:flex;gap:18px;padding:20px 24px}
+.buy-col{flex:1;display:flex;flex-direction:column;gap:16px}
+.buy-cat-label{font-size:12px;letter-spacing:.22em;color:var(--sand);
+  border-bottom:1px solid var(--line);padding-bottom:5px;margin-bottom:8px}
+.buy-cat-items{display:flex;flex-direction:column;gap:5px}
+.buy-item{display:flex;align-items:center;gap:12px;width:100%;
+  padding:8px 12px;background:#120f0bcc;border:1px solid var(--line);border-left:2px solid #00000000;
+  color:var(--text);cursor:pointer;transition:.12s;font-family:var(--font);text-align:left}
+.buy-item:hover{background:#241f14;border-left-color:var(--sand);transform:translateX(2px)}
+.buy-item .bi-ico{width:58px;height:24px;display:flex;align-items:center;justify-content:flex-start;
+  fill:#fff;color:#fff;flex:0 0 auto;filter:drop-shadow(0 1px 1px #000)}
+.buy-item .bi-ico svg{height:22px;width:auto;max-width:58px}
+.buy-item svg.bi-ico{width:22px;height:22px}
+.buy-item .bi-name{flex:1;font-size:15px;letter-spacing:.06em;font-weight:600;color:#fff}
+.buy-item .bi-price{font-size:15px;font-weight:700;color:var(--good);font-variant-numeric:tabular-nums}
+.buy-item.cant{opacity:.55;cursor:not-allowed}
+.buy-item.cant:hover{transform:none;border-left-color:#00000000;background:#120f0bcc}
+.buy-item.cant .bi-price{color:var(--danger)}
+.buy-item.owned{opacity:.8;border-left-color:var(--good)}
+.buy-item.owned .bi-price{color:var(--good);font-size:12px;letter-spacing:.1em}
+#buymenu.timeup .buy-item{opacity:.4;pointer-events:none}
+
+.buy-foot{display:flex;align-items:center;justify-content:space-between;gap:18px;
+  padding:14px 24px;background:#1b1712;border-top:1px solid var(--line)}
+.buy-owned{font-size:12px;letter-spacing:.08em;color:var(--text-dim)}
+.buy-owned b{color:var(--sand-bright);font-weight:700}
+#buy-deploy{width:auto;padding:12px 30px}
+.kbd-mini{display:inline-block;margin-left:8px;padding:1px 7px;background:#0c0a07;border:1px solid #1a1409;
+  border-radius:3px;font-size:12px;color:#1a1409;background:#e7c878}
