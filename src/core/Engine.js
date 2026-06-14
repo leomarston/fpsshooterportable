@@ -128,10 +128,12 @@ export class Engine {
 
     // Sky/ground bounce.
     const hemi = new THREE.HemisphereLight(0xbcd4ff, 0xa8814a, 0.55);
+    this.hemi = hemi;
     this.scene.add(hemi);
 
     // Soft warm fill so shadowed faces aren't crushed (kept low for contrast).
     const amb = new THREE.AmbientLight(0xffe6c2, 0.2);
+    this.amb = amb;
     this.scene.add(amb);
 
     // Cool rim/bounce from the opposite side.
@@ -254,6 +256,28 @@ export class Engine {
   }
 
   setFov(fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+
+  // Switch the world's atmosphere between the outdoor desert and an indoor
+  // (metro) mood: darker fog, no bright sky, dimmer sun/sky fill.
+  setMood(kind) {
+    if (kind === 'indoor') {
+      this.scene.fog = new THREE.Fog(0x0a0e13, 16, 130);
+      this.scene.background = new THREE.Color(0x070a0e);
+      this.renderer.toneMappingExposure = 1.18;
+      if (this.sky) this.sky.visible = false;
+      if (this.sun) this.sun.intensity = 0.5;
+      if (this.hemi) { this.hemi.intensity = 0.7; this.hemi.color.setHex(0xaebccf); this.hemi.groundColor.setHex(0x191c22); }
+      if (this.amb) { this.amb.intensity = 0.45; this.amb.color.setHex(0xb9c6d8); }
+    } else {
+      this.scene.fog = new THREE.Fog(this.fogColor, 55, 190);
+      this.scene.background = this.fogColor.clone();
+      this.renderer.toneMappingExposure = 1.0;
+      if (this.sky) this.sky.visible = true;
+      if (this.sun) this.sun.intensity = 3.2;
+      if (this.hemi) { this.hemi.intensity = 0.55; this.hemi.color.setHex(0xbcd4ff); this.hemi.groundColor.setHex(0xa8814a); }
+      if (this.amb) { this.amb.intensity = 0.2; this.amb.color.setHex(0xffe6c2); }
+    }
+  }
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;

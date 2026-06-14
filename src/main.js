@@ -90,28 +90,38 @@ addEventListener('blur', () => { if (game.state === 'playing') game.pause(); });
 addEventListener('resize', () => { game.fx?.resize(); });
 
 /* ----------------------------- menu actions ----------------------------- */
-async function ensureBuilt() {
-  if (game.built) return;
-  menus.loadProgress(0, 'Forging assets…');
-  await game.build((p, t) => menus.loadProgress(p, t));
+async function ensureBuilt(map) {
+  map = map || game.mapChoice || 'dust2';
+  if (game.built && game._builtMap === map) return;
+  menus.loadProgress(0, map === 'metro' ? 'Loading metro station…' : 'Forging assets…');
+  await game.build((p, t) => menus.loadProgress(p, t), map);
   menus.hideLoadProgress();
 }
 async function start(n, teamSize, opts = {}) {
   audio.resume();
-  if (!game.built) await ensureBuilt();
+  const map = opts.map || 'dust2';
+  game.mapChoice = map;
+  if (!game.built || game._builtMap !== map) await ensureBuilt(map);
   applyLayout(n);
   applySettings(menus.settings);
   menus.hideAll();
   game.startMatch(n, teamSize, opts);
 }
 
-// Match setup: pick co-op/versus (2P) and the team size (1v1 … 5v5).
-let pendingHumans = 1, pendingVersus = false;
-menus.on('play', () => { pendingHumans = 1; pendingVersus = false; menus.showSetup(1, false); });
+// Match setup: pick map, co-op/versus (2P) and the team size (1v1 … 5v5).
+let pendingHumans = 1, pendingVersus = false, pendingMap = 'dust2';
+menus.on('play', () => { pendingHumans = 1; pendingVersus = false; pendingMap = 'dust2'; menus.showSetup(1, false); });
 menus.on('coop', () => {
-  pendingHumans = 2; pendingVersus = false;
+  pendingHumans = 2; pendingVersus = false; pendingMap = 'dust2';
   menus.flashHint('P2 controls: move I J K L · look ← ↑ → ↓ · fire RShift · reload P · buy U');
   menus.showSetup(2, true);
+});
+document.querySelectorAll('.map-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    pendingMap = b.dataset.map;
+    document.querySelectorAll('.map-btn').forEach((x) => x.classList.toggle('active', x === b));
+    audio.ui?.('click');
+  });
 });
 document.querySelectorAll('.mode-btn').forEach((b) => {
   b.addEventListener('click', () => {
@@ -125,14 +135,14 @@ document.querySelectorAll('.size-btn').forEach((b) => {
   b.addEventListener('click', () => {
     if (b.disabled) return;
     audio.ui?.('click');
-    start(pendingHumans, parseInt(b.dataset.size, 10), { versus: pendingVersus });
+    start(pendingHumans, parseInt(b.dataset.size, 10), { versus: pendingVersus, map: pendingMap });
   });
 });
 
 function resumeGame() { game.resume(); if (game.players[0]) input1.requestLock(); }
 menus.on('resume', resumeGame);
 menus.on('quit', () => game.quitToMenu());
-menus.on('retry', () => start(game.numHumans || 1, game.teamSize || game.numHumans || 1, { versus: game.versus }));
+menus.on('retry', () => start(game.numHumans || 1, game.teamSize || game.numHumans || 1, { versus: game.versus, map: game._builtMap }));
 menus.on('mainmenu', () => game.quitToMenu());
 menus.on('nextround', () => game.nextRound());
 menus.on('settings', (s, key) => applySettings(s, key));

@@ -10,9 +10,10 @@
 import * as THREE from 'three';
 
 export class Nav {
-  constructor(world, bounds, res = 1.6) {
+  constructor(world, bounds, res = 1.6, maxFloor = 3.2) {
     this.world = world;
     this.res = res;
+    this.maxFloor = maxFloor;   // cells whose floor is higher than this aren't walkable
     this.x0 = bounds.x0 + 1; this.x1 = bounds.x1 - 1;
     this.z0 = bounds.z0 + 1; this.z1 = bounds.z1 - 1;
     this.cols = Math.floor((this.x1 - this.x0) / res) + 1;
@@ -33,7 +34,7 @@ export class Nav {
       for (let c = 0; c < this.cols; c++) {
         const x = this._cx(c), z = this._cz(r);
         const gy = this.world.groundHeight(x, z, 30);
-        const walkable = gy < 3.2 && this.world.isFree(new THREE.Vector3(x, gy + 0.06, z), this.radius, this.height);
+        const walkable = gy < this.maxFloor && this.world.isFree(new THREE.Vector3(x, gy + 0.06, z), this.radius, this.height);
         this.nodes[this._idx(c, r)] = { c, r, x, z, y: gy, walkable };
       }
     }
@@ -145,7 +146,7 @@ export class Nav {
       const t = s / steps;
       const x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
       const gy = this.world.groundHeight(x, z, 30);
-      if (gy > 3.2 || !this.world.isFree(new THREE.Vector3(x, gy + 0.06, z), this.radius, this.height)) return false;
+      if (gy > this.maxFloor || !this.world.isFree(new THREE.Vector3(x, gy + 0.06, z), this.radius, this.height)) return false;
     }
     return true;
   }

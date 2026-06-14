@@ -104,6 +104,7 @@ export class Menus {
     const modeRow = document.querySelector('.setup-mode');
     if (modeRow) modeRow.classList.toggle('hidden', !allowVersus);
     document.querySelectorAll('.mode-btn').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'coop'));
+    document.querySelectorAll('.map-btn').forEach((x) => x.classList.toggle('active', x.dataset.map === 'dust2'));
     this.updateSetupSizes(numHumans, false);
     this.show('setup');
   }

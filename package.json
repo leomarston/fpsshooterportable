@@ -14,6 +14,7 @@
     "test:coop": "node tools/coop.mjs",
     "test:match": "node tools/matchflow.mjs",
     "test:versus": "node tools/versus.mjs",
+    "test:metro": "node tools/metrotest.mjs",
     "test:nav": "node tools/navtest.mjs"
   },
   "keywords": [

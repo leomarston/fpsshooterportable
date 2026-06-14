@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { Forge } from '../core/AssetForge.js';
 import { CollisionWorld } from '../world/Collision.js';
 import { MapBuilder } from '../world/MapBuilder.js';
+import { MetroMap } from '../world/MetroMap.js';
 import { Nav } from '../world/Nav.js';
 import { Player } from '../entities/Player.js';
 import { PlayerAvatar } from '../entities/PlayerAvatar.js';
@@ -53,16 +54,35 @@ export class Game {
   // main.js provides per-player UI/input slots: {input, camera, hud, buyMenu, name, color}
   configureSlots(slots) { this.slots = slots; }
 
-  async build(onProgress) {
+  // Build (or rebuild) the world for the chosen map ('dust2' | 'metro').
+  async build(onProgress, mapChoice) {
+    mapChoice = mapChoice || this.mapChoice || 'dust2';
+    if (this.built && this._builtMap === mapChoice) return;
     const scene = this.engine.scene;
+    if (!this.fx) this.fx = new FX(scene);          // shared across maps
+
+    // tear down a previously-built map's visuals
+    if (this._mapGroup) { scene.remove(this._mapGroup); this._mapGroup = null; }
+    if (this.metro) { this.metro.dispose(); this.metro = null; }
+    this.enemyMgr?.clearAll();
+    this._disposeAvatars();
+
     onProgress?.(0.1, 'Forging materials…'); await frame();
-    this.world = new CollisionWorld();
-    this.fx = new FX(scene);
-    this.map = new MapBuilder(scene, this.world, Forge);
-    onProgress?.(0.25, 'Building the site…'); await frame();
-    this.mapInfo = this.map.build();
+    if (mapChoice === 'metro') {
+      this.metro = new MetroMap(scene, this.engine);
+      const info = await this.metro.build(onProgress);
+      this.world = info.world; this.mapInfo = info; this._mapGroup = info.group;
+      this.engine.setMood('indoor');
+    } else {
+      this.world = new CollisionWorld();
+      this.map = new MapBuilder(scene, this.world, Forge);
+      onProgress?.(0.25, 'Building the site…'); await frame();
+      this.mapInfo = this.map.build();
+      this._mapGroup = this.mapInfo.group;
+      this.engine.setMood('desert');
+    }
     onProgress?.(0.6, 'Baking navigation…'); await frame();
-    this.nav = new Nav(this.world, this.mapInfo.bounds, 1.6);
+    this.nav = new Nav(this.world, this.mapInfo.bounds, 1.6, this.mapInfo.navMaxFloor || 3.2);
     onProgress?.(0.8, 'Arming operators…'); await frame();
 
     this.combat = new Combat(this.world, this.fx, this.audio);
@@ -70,7 +90,7 @@ export class Game {
     this._wireCombat();
 
     onProgress?.(1.0, 'Ready'); await frame();
-    this.built = true;
+    this.built = true; this._builtMap = mapChoice;
   }
 
   /* --------------------------- player objects --------------------------- */
@@ -246,8 +266,7 @@ export class Game {
       sp.y = this.world.groundHeight(sp.x, sp.z, 30);
       P.ent.reset(sp);
       P.ent.setLookFrom(new THREE.Vector3(0, 1.6, 0));
-      if (P.lostLoadout) { P.owned.primary = null; P.owned.armor = 0; P.owned.helmet = false; }
-      P.lostLoadout = false;
+      // weapons persist across rounds: you keep what you bought (re-armed full)
       P.ent.armor = P.owned.armor;
       P.ent._updateCamera(0.016);
       P.deadHandled = false;
@@ -293,7 +312,6 @@ export class Game {
     for (const P of this.players) {
       const reward = (P.ent.team === winner) ? winReward : lossReward;
       P.money = Math.min(MONEY_MAX, P.money + reward); P.hud.setMoney(P.money);
-      if (!P.ent.alive) P.lostLoadout = true;   // dead players re-buy next round
     }
 
     const winSide = this._sideOfTeam(winner);
@@ -464,6 +482,12 @@ export class Game {
   }
 
   _zoneName(p) {
+    if (this._builtMap === 'metro') {
+      const b = this.mapInfo.bounds, t = (p.z - b.z0) / Math.max(1, b.z1 - b.z0);
+      if (t < 0.25) return 'SOUTH END';
+      if (t > 0.75) return 'NORTH END';
+      return t < 0.5 ? 'PLATFORM S' : 'PLATFORM N';
+    }
     if (p.z < -40) return 'T SPAWN';
     if (p.x > 15) return p.z > 24 ? 'BOMBSITE A' : 'LONG A';
     if (p.x < -13) return p.z > 24 ? 'BOMBSITE B' : 'TUNNELS';

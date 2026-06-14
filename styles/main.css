@@ -225,18 +225,22 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
 .brief-note{font-size:14px;color:var(--text-dim);line-height:1.6;margin-bottom:22px;text-align:center}
 
 /* match setup (team-size picker) */
-.panel.setup{max-width:560px}
-.setup-note{font-size:13.5px;color:var(--text-dim);line-height:1.65;text-align:center;margin-bottom:22px}
+.panel.setup{max-width:600px;width:92%}
+.setup-note{font-size:13.5px;color:var(--text-dim);line-height:1.6;text-align:center;margin-bottom:20px}
 .setup-note b{color:var(--sand)}
 .setup-note .ally{color:#5b8cff;font-weight:600}
 .setup-note .foe{color:#ff5b4d;font-weight:600}
-.setup-mode{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
-.setup-mode .mode-btn{padding:12px 0;font-size:13px;font-weight:700;letter-spacing:.04em;opacity:.6}
+.setup-row-label{font-size:10px;letter-spacing:.22em;color:var(--sand);text-align:left;margin:2px 0 6px}
+.setup-map{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.setup-map .map-btn{width:100%;padding:13px 6px;font-size:13.5px;font-weight:700;letter-spacing:.05em;opacity:.55;text-align:center;clip-path:none}
+.setup-map .map-btn.active{opacity:1;border-color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand),0 0 12px #c2a05a44}
+.setup-mode{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.setup-mode .mode-btn{width:100%;padding:12px 6px;font-size:12.5px;font-weight:700;letter-spacing:.03em;opacity:.55;text-align:center;clip-path:none}
 .setup-mode .mode-btn.active{opacity:1;border-color:var(--sand);box-shadow:inset 0 0 0 1px var(--sand),0 0 12px #c2a05a44}
-.setup-sizes{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px}
-.setup-sizes .size-btn{padding:16px 0;font-size:16px;font-weight:700;letter-spacing:.06em}
-.setup-sizes .size-btn.disabled,.setup-sizes .size-btn:disabled{opacity:.32;cursor:not-allowed;filter:grayscale(.6)}
-@media (max-width:560px){.setup-sizes{grid-template-columns:repeat(2,1fr)}}
+.setup-sizes{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px}
+.setup-sizes .size-btn{width:100%;padding:15px 0;font-size:15px;font-weight:700;letter-spacing:.04em;text-align:center;clip-path:none}
+.setup-sizes .size-btn.disabled,.setup-sizes .size-btn:disabled{opacity:.3;cursor:not-allowed;filter:grayscale(.6)}
+.panel.setup .close-overlay{display:block;width:100%;clip-path:none}
 
 .setting{margin-bottom:18px}
 .setting label{display:flex;justify-content:space-between;font-size:14px;letter-spacing:.08em;
@@ -340,14 +344,14 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
 /* ===================================================================
    Per-view HUD (.hudv) — scoped so multiple instances coexist (split).
    =================================================================== */
-.hudv{position:fixed;left:0;right:0;pointer-events:none;overflow:hidden;z-index:10;
+.hudv{position:fixed;left:0;right:0;top:0;bottom:0;pointer-events:none;overflow:hidden;z-index:10;
   font-family:var(--font);letter-spacing:.04em}
-.hudv.full{top:0;bottom:0}
-.hudv.split-top{top:0;height:50%}
-.hudv.split-bottom{top:50%;height:50%;border-top:3px solid #000;box-shadow:inset 0 3px 12px #000a}
+.hudv.full{top:0;bottom:0;height:auto}
+.hudv.split-top{top:0;height:50%;border-bottom:2px solid #c2a05a66}
+.hudv.split-bottom{top:50%;height:50%;border-top:2px solid #c2a05a66;box-shadow:inset 0 4px 16px #000a}
 .hudv.hidden{display:none}
-/* split scales the HUD down a touch */
-.hudv.split-top, .hudv.split-bottom{font-size:.9em}
+/* split scales the HUD down a touch so nothing crowds a half */
+.hudv.split-top, .hudv.split-bottom{font-size:.86em}
 
 .hudv .crosshair{position:absolute;left:50%;top:50%;width:64px;height:64px;transform:translate(-50%,-50%);--gap:7px;--len:8px;--thick:2px;--col:#39ff8e}
 .hudv .ch{position:absolute;left:50%;top:50%;background:var(--col);box-shadow:0 0 2px #000,0 0 4px #000}
@@ -398,6 +402,10 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
 
 .hudv .radar{position:absolute;left:16px;top:12px;width:150px;height:150px}
 .hudv .radar-canvas{width:150px;height:150px;display:block;background:#0a0c0f;border:1px solid #00000088}
+/* split: shrink the radar + lift the money box so a half isn't crowded */
+.hudv.split-top .radar,.hudv.split-bottom .radar,
+.hudv.split-top .radar-canvas,.hudv.split-bottom .radar-canvas{width:118px;height:118px}
+.hudv.split-top .money-box,.hudv.split-bottom .money-box{top:138px}
 .hudv .radar-frame{position:absolute;inset:0;border:2px solid #161310;box-shadow:inset 0 0 0 1px #ffffff14,0 3px 14px #0007}
 .hudv .radar-loc{position:absolute;left:6px;bottom:4px;font-size:10px;letter-spacing:.2em;color:#ffffff66}
 
@@ -451,6 +459,7 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
 
 .hudv .scope{position:absolute;inset:0}
 .hudv .scope .scope-lens{position:absolute;left:50%;top:50%;width:min(80%,80vh);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;box-shadow:0 0 0 4px #000,0 0 0 2000px #000,inset 0 0 80px #000a}
+.hudv.split-top .scope .scope-lens,.hudv.split-bottom .scope .scope-lens{width:min(70%,40vh)}
 .hudv .scope .scope-h{position:absolute;top:50%;left:0;right:0;height:1px;background:#000}
 .hudv .scope .scope-v{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#000}
 
