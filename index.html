@@ -35,7 +35,7 @@
       <p class="tagline">Tactical browser FPS — clear the site, survive the rounds.</p>
       <div class="menu-buttons">
         <button id="btn-play" class="btn btn-primary">DEPLOY (1P)</button>
-        <button id="btn-coop" class="btn">2 PLAYERS — CO-OP</button>
+        <button id="btn-coop" class="btn">2 PLAYERS (CO-OP / VERSUS)</button>
         <button id="btn-howto" class="btn">BRIEFING</button>
         <button id="btn-settings" class="btn">SETTINGS</button>
       </div>
@@ -51,8 +51,11 @@
     <div class="panel setup">
       <h2>CHOOSE FORMAT</h2>
       <p class="setup-note">MR5 — 10 rounds, sides swap at halftime, first team to <b>6</b> wins (5–5 draws).
-        You (and Player 2) play co-op as one team; bots fill the empty slots on <em>both</em> teams.
-        <span class="ally">Allies are blue</span>, <span class="foe">enemies are red</span>.</p>
+        Bots fill the empty slots on both teams. <span class="ally">CT is blue</span>, <span class="foe">T is red</span>.</p>
+      <div class="setup-mode hidden">
+        <button class="btn mode-btn active" data-mode="coop">CO-OP — same team</button>
+        <button class="btn mode-btn" data-mode="versus">VERSUS — opposing teams</button>
+      </div>
       <div class="setup-sizes">
         <button class="btn size-btn" data-size="1">1 v 1</button>
         <button class="btn size-btn" data-size="2">2 v 2</button>

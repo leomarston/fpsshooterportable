@@ -191,7 +191,8 @@ export class HUD {
     }
     this._mapRects = rects;
   }
-  updateRadar(player, enemies, sites) {
+  // `mates` = combatants on the viewer's team (allies). Enemies are NOT shown.
+  updateRadar(player, mates, sites) {
     const ctx = this.rctx; if (!ctx) return;
     const W = this.el.radar.width, Hc = this.el.radar.height, cx = W / 2, cy = Hc / 2, s = (W / 2) / this.radarRange;
     const cos = Math.cos(player.yaw), sin = Math.sin(player.yaw), px = player.feet.x, pz = player.feet.z;
@@ -205,12 +206,14 @@ export class HUD {
     }
     ctx.font = 'bold 16px Rajdhani, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const key of Object.keys(sites || {})) { const sp = sites[key]; const [sx, sy] = toR(sp.center.x, sp.center.z); ctx.fillStyle = '#e6c87399'; ctx.fillText(key, sx, sy); }
-    for (const e of enemies) {
-      if (e.dead) continue; const [sx, sy] = toR(e.feet.x, e.feet.z);
+    // friendly blips only — teammates (not the viewer, not enemies)
+    for (const m of (mates || [])) {
+      if (!m || m === player || !m.alive) continue;
+      const [sx, sy] = toR(m.feet.x, m.feet.z);
       if (sx < -6 || sx > W + 6 || sy < -6 || sy > Hc + 6) continue;
-      const seen = e.canSee || e.alert > 0.5; ctx.fillStyle = seen ? '#ff4d4d' : '#d06a44';
-      ctx.beginPath(); ctx.arc(sx, sy, 3.6, 0, 7); ctx.fill();
-      if (seen) { ctx.strokeStyle = '#ff4d4d88'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx, sy, 7, 0, 7); ctx.stroke(); }
+      ctx.fillStyle = '#46d3ff';
+      ctx.beginPath(); ctx.arc(sx, sy, 3.4, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#0c0f13'; ctx.lineWidth = 1.2; ctx.stroke();
     }
     ctx.save(); ctx.translate(cx, cy); ctx.fillStyle = this.accent; ctx.strokeStyle = '#0c0f13'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-5.5, 6); ctx.lineTo(0, 3); ctx.lineTo(5.5, 6); ctx.closePath(); ctx.fill(); ctx.stroke();

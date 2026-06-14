@@ -96,35 +96,43 @@ async function ensureBuilt() {
   await game.build((p, t) => menus.loadProgress(p, t));
   menus.hideLoadProgress();
 }
-async function start(n, teamSize) {
+async function start(n, teamSize, opts = {}) {
   audio.resume();
   if (!game.built) await ensureBuilt();
   applyLayout(n);
   applySettings(menus.settings);
   menus.hideAll();
-  game.startMatch(n, teamSize);
+  game.startMatch(n, teamSize, opts);
 }
 
-// Match setup: pick the team size (1v1 … 5v5) before deploying.
-let pendingHumans = 1;
-menus.on('play', () => { pendingHumans = 1; menus.showSetup(1); });
+// Match setup: pick co-op/versus (2P) and the team size (1v1 … 5v5).
+let pendingHumans = 1, pendingVersus = false;
+menus.on('play', () => { pendingHumans = 1; pendingVersus = false; menus.showSetup(1, false); });
 menus.on('coop', () => {
-  pendingHumans = 2;
+  pendingHumans = 2; pendingVersus = false;
   menus.flashHint('P2 controls: move I J K L · look ← ↑ → ↓ · fire RShift · reload P · buy U');
-  menus.showSetup(2);
+  menus.showSetup(2, true);
+});
+document.querySelectorAll('.mode-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    pendingVersus = b.dataset.mode === 'versus';
+    document.querySelectorAll('.mode-btn').forEach((x) => x.classList.toggle('active', x === b));
+    audio.ui?.('click');
+    menus.updateSetupSizes(pendingHumans, pendingVersus);
+  });
 });
 document.querySelectorAll('.size-btn').forEach((b) => {
   b.addEventListener('click', () => {
     if (b.disabled) return;
     audio.ui?.('click');
-    start(pendingHumans, parseInt(b.dataset.size, 10));
+    start(pendingHumans, parseInt(b.dataset.size, 10), { versus: pendingVersus });
   });
 });
 
 function resumeGame() { game.resume(); if (game.players[0]) input1.requestLock(); }
 menus.on('resume', resumeGame);
 menus.on('quit', () => game.quitToMenu());
-menus.on('retry', () => start(game.numHumans || 1, game.teamSize || game.numHumans || 1));
+menus.on('retry', () => start(game.numHumans || 1, game.teamSize || game.numHumans || 1, { versus: game.versus }));
 menus.on('mainmenu', () => game.quitToMenu());
 menus.on('nextround', () => game.nextRound());
 menus.on('settings', (s, key) => applySettings(s, key));

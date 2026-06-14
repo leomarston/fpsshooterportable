@@ -13,6 +13,7 @@
     "shots": "QUALITY=high node tools/shoot.mjs",
     "test:coop": "node tools/coop.mjs",
     "test:match": "node tools/matchflow.mjs",
+    "test:versus": "node tools/versus.mjs",
     "test:nav": "node tools/navtest.mjs"
   },
   "keywords": [

@@ -72,9 +72,9 @@ export class Enemy {
     const clothDark = new THREE.MeshStandardMaterial({ color: 0x3a3e30, roughness: 0.8, metalness: 0.05 });
     const vest = new THREE.MeshStandardMaterial({ color: 0x262922, roughness: 0.55, metalness: 0.3, envMapIntensity: env });
     const rubber = new THREE.MeshStandardMaterial({ color: 0x14140f, roughness: 0.8, metalness: 0.1 });
-    // readability accent: blue for friendly (allied) bots, red for hostiles
-    const friendly = !!this.cfg.friendly;
-    const accent = new THREE.MeshStandardMaterial({ color: friendly ? 0x2f6bff : 0xc23a2c, roughness: 0.5, metalness: 0.2, emissive: friendly ? 0x07194d : 0x4a0e07, emissiveIntensity: 0.5 });
+    // readability accent by SIDE: CT blue, T red (correct for co-op and versus)
+    const ct = this.cfg.side === 'CT';
+    const accent = new THREE.MeshStandardMaterial({ color: ct ? 0x2f6bff : 0xc23a2c, roughness: 0.5, metalness: 0.2, emissive: ct ? 0x07194d : 0x4a0e07, emissiveIntensity: 0.5 });
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.45, metalness: 0.65, envMapIntensity: env });
     const glove = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.7, metalness: 0.1 });
 
@@ -157,28 +157,8 @@ export class Enemy {
       new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.flash.visible = false; this.gun.add(this.flash); this.flash.position.set(0, 0, -0.52);
 
-    // health bar billboard
-    this.hpBar = this._makeHpBar();
-    this.hpBar.position.set(0, 2.08, 0);
-    g.add(this.hpBar);
-    this.hpBarTime = 0;
-
     g.position.copy(this.feet);
     this.scene.add(g);
-  }
-
-  _makeHpBar() {
-    const grp = new THREE.Group();
-    const bg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.1),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6, depthTest: false }));
-    bg.renderOrder = 999;
-    const fill = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.07),
-      new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false }));
-    fill.position.z = 0.001; fill.renderOrder = 1000;
-    this.hpFill = fill;
-    grp.add(bg); grp.add(fill);
-    grp.visible = false;
-    return grp;
   }
 
   get position() { return this.feet; }
@@ -203,7 +183,6 @@ export class Enemy {
   hit(dmg, headshot, dir, fx) {
     if (this.dead) return false;
     this.health -= dmg;
-    this.hpBarTime = 2.5; this.hpBar.visible = true;
     this.alert = 1; this.lastSeen = this.cfg.now ? this.cfg.now() : 0;
     if (fx) fx.blood(this.eyePosition(new THREE.Vector3()).addScaledVector(dir, 0.1), dir);
     // flinch
@@ -214,7 +193,6 @@ export class Enemy {
 
   _die() {
     this.dead = true; this.state = 'dead'; this.deadTime = 0;
-    this.hpBar.visible = false;
     this.vel.set(0, 0, 0);
   }
 
@@ -229,7 +207,6 @@ export class Enemy {
     this.strafeTimer -= dt;
     this.muzzleFlashT -= dt;
     this.flash.visible = this.muzzleFlashT > 0;
-    if (this.hpBarTime > 0) { this.hpBarTime -= dt; if (this.hpBarTime <= 0) this.hpBar.visible = false; }
 
     // physics: gravity + collision
     this.vel.y -= 20 * dt;
@@ -498,15 +475,6 @@ export class Enemy {
     this.armR.rotation.x = -this.aimPitch - 0.2;
     // head pitch
     this.head.rotation.x = THREE.MathUtils.clamp(-this.aimPitch * 0.5, -0.5, 0.5);
-    // hp bar billboard + fill
-    if (this.hpBar.visible) {
-      this.hpBar.lookAt(ctx.camera.position);
-      this.hpBar.rotation.z = 0;
-      const f = Math.max(0, this.health / this.maxHealth);
-      this.hpFill.scale.x = f;
-      this.hpFill.position.x = -(1 - f) * 0.38;
-      this.hpFill.material.color.setHex(f > 0.5 ? 0x4caf50 : f > 0.25 ? 0xffb300 : 0xff3b30);
-    }
   }
 
   _updateDead(dt) {

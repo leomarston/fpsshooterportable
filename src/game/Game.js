@@ -176,19 +176,29 @@ export class Game {
 
   _allCombatants() { return [...this.players.map(p => p.ent), ...this.enemyMgr.enemies]; }
   _teamAlive(team) { let n = 0; for (const c of this._allCombatants()) if (c.team === team && c.alive) n++; return n; }
+  _teamMates(ent) { return this._allCombatants().filter(c => c.team === ent.team && c !== ent); }
 
   /* ------------------------------ flow ------------------------------ */
 
-  // numPlayers = humans connected; teamSize = 1..5 (clamped to >= humans).
-  startMatch(numPlayers = 1, teamSize = numPlayers) {
+  // numPlayers = humans connected; teamSize = 1..5; opts.versus puts the
+  // two humans on opposing teams (otherwise they co-op on team 0).
+  startMatch(numPlayers = 1, teamSize = numPlayers, opts = {}) {
     this.numHumans = Math.min(numPlayers, this.slots.length);
     this.numPlayers = this.numHumans;
-    this.teamSize = Math.max(this.numHumans, Math.min(5, (teamSize | 0) || 1));
+    this.versus = !!opts.versus && this.numHumans >= 2;
+    // co-op needs >= numHumans on one team; versus needs only 1 per side
+    const minSize = this.versus ? 1 : this.numHumans;
+    this.teamSize = Math.max(minSize, Math.min(5, (teamSize | 0) || 1));
     this.engine.setPlayerCount(this.numHumans);
 
     this._disposeAvatars();
     this.players = [];
     for (let i = 0; i < this.numHumans; i++) this.players.push(this._makePlayer(this.slots[i], i));
+    // assign humans to teams (versus: player 0 → team 0, player 1 → team 1)
+    for (let i = 0; i < this.players.length; i++) {
+      const team = (this.versus && i >= 1) ? 1 : 0;
+      this.players[i].team = team; this.players[i].ent.team = team;
+    }
     this._setupAvatars();
 
     this.round = 0; this.wins = [0, 0]; this.lossStreak = [0, 0];
@@ -199,7 +209,7 @@ export class Game {
       P.kills = 0; P.deaths = 0; P.streak = 0; P.lostLoadout = false; P.deadHandled = false;
       P.hud.attach(); P.hud.show(); P.hud.setMap(this.world.boxes, this.mapInfo.bounds);
       P.hud.setMoney(P.money); P.hud.setStreak(0);
-      P.hud.setMatchScore(0, 0, this._humanSide());
+      P.hud.setMatchScore(0, 0, this._sideOfTeam(P.team));
     }
     this.audio.startAmbient();
     this.nextRound();
@@ -224,14 +234,17 @@ export class Game {
 
     this.enemyMgr.clearAll();
 
-    // place humans (team 0) at their side spawns
+    // place each human at THEIR team's side spawns
     const team0Side = this._sideOfTeam(0), team1Side = this._sideOfTeam(1);
-    const team0Spawns = this._sideSpawns(team0Side);
-    this.players.forEach((P, i) => {
-      const sp = team0Spawns[i % team0Spawns.length].clone();
+    const sideSpawns = { CT: this._sideSpawns('CT'), T: this._sideSpawns('T') };
+    const spawnIdx = [0, 0];
+    this.players.forEach((P) => {
+      P.ent.team = P.team;
+      const side = this._sideOfTeam(P.team);
+      const arr = sideSpawns[side];
+      const sp = arr[spawnIdx[P.team]++ % arr.length].clone();
       sp.y = this.world.groundHeight(sp.x, sp.z, 30);
       P.ent.reset(sp);
-      P.ent.team = 0;
       P.ent.setLookFrom(new THREE.Vector3(0, 1.6, 0));
       if (P.lostLoadout) { P.owned.primary = null; P.owned.armor = 0; P.owned.helmet = false; }
       P.lostLoadout = false;
@@ -241,15 +254,18 @@ export class Game {
       this._applyOwned(P, true);
       P.weapons.setBaseFov(this.menus.settings.fov);
       P.hud.setRound(this.round); P.hud.setMoney(P.money);
-      P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide());
+      P.hud.setMatchScore(this._ctWins(), this._tWins(), side);
       P.hud.setHalf(secondHalf ? '2ND' : '1ST');
+      P.avatar?.setAccent(side === 'CT' ? 0x2f6bff : 0xc23a2c);   // body reads by side
     });
 
     // fill both teams with bots; both push a single contested site so they clash
+    const h0 = this.players.filter(p => p.team === 0).length;
+    const h1 = this.players.filter(p => p.team === 1).length;
     const sites = this.mapInfo.sites;
     this._focusSite = (Math.random() < 0.5 ? sites.A : sites.B).center;
-    this._spawnBots(this.teamSize - this.numHumans, 0, team0Side, true, pistolRound, this.numHumans, this._focusSite);
-    this._spawnBots(this.teamSize, 1, team1Side, false, pistolRound, 0, this._focusSite);
+    this._spawnBots(this.teamSize - h0, 0, team0Side, pistolRound, spawnIdx[0], this._focusSite);
+    this._spawnBots(this.teamSize - h1, 1, team1Side, pistolRound, spawnIdx[1], this._focusSite);
 
     this.combat.setCombatants(this._allCombatants());
     for (const P of this.players) P.hud.setAlive(this._teamAlive(this._teamForSide('CT')), this._teamAlive(this._teamForSide('T')));
@@ -260,7 +276,7 @@ export class Game {
     this._liveEnd = this._freezeEnd + ROUND_TIME * 1000;   // round clock starts after freeze
     this._endDelay = 0; this._roundResolved = false;
     this.audio.stinger('roundstart');
-    if (halftime) for (const P of this.players) P.hud.announce('SWITCHING SIDES', `YOU ARE NOW ${this._humanSide()}`, 2400, '#e7c878');
+    if (halftime) for (const P of this.players) P.hud.announce('SWITCHING SIDES', `YOU ARE NOW ${this._sideOfTeam(P.ent.team)}`, 2400, '#e7c878');
     this.openBuyAll(true);
   }
 
@@ -285,7 +301,7 @@ export class Game {
     for (const P of this.players) {
       const won = P.ent.team === winner;
       P.hud.announce(won ? 'ROUND WON' : 'ROUND LOST', `${winSide} ELIMINATED THE ENEMY`, 2000, won ? '#36c46a' : '#e0413a');
-      P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide());
+      P.hud.setMatchScore(this._ctWins(), this._tWins(), this._sideOfTeam(P.ent.team));
     }
 
     if (this.wins[winner] >= CLINCH || this.round >= MAX_ROUNDS) { this._matchOver(); return; }
@@ -307,15 +323,20 @@ export class Game {
   _matchOver() {
     this.state = 'matchover';
     const draw = this.wins[0] === this.wins[1];
-    const won = this.wins[0] > this.wins[1];
-    this.audio.stinger(draw ? 'roundstart' : (won ? 'win' : 'lose'));
+    const team0Won = this.wins[0] > this.wins[1];
+    this.audio.stinger(draw ? 'roundstart' : (team0Won ? 'win' : 'lose'));
     this.audio.stopAmbient();
+    // versus has a human on each side → use a neutral side-based result
+    let title;
+    if (draw) title = 'MATCH DRAWN';
+    else if (this.versus) title = (this._sideOfTeam(team0Won ? 0 : 1)) + ' WINS THE MATCH';
+    else title = team0Won ? 'VICTORY' : 'DEFEAT';
     this.menus.showGameOver({
-      title: draw ? 'MATCH DRAWN' : (won ? 'VICTORY' : 'DEFEAT'),
+      title,
       stats: [
-        { v: `${this.wins[0]} : ${this.wins[1]}`, l: 'YOUR TEAM : ENEMY' },
-        { v: `${this.teamSize}v${this.teamSize}`, l: 'FORMAT' },
-        { v: this.totalKills, l: 'TEAM KILLS' },
+        { v: `CT ${this._ctWins()} : ${this._tWins()} T`, l: 'FINAL SCORE' },
+        { v: `${this.teamSize}v${this.teamSize}${this.versus ? ' · VERSUS' : ''}`, l: 'FORMAT' },
+        { v: this.totalKills, l: 'TOTAL KILLS' },
         { v: this.players.map(p => `${p.kills}/${p.deaths}`).join('  '), l: 'K / D' },
       ],
     });
@@ -403,8 +424,9 @@ export class Game {
     return ['ak47', 'm4', 'ak47', 'm4'][(Math.random() * 4) | 0];
   }
 
-  // Fixed-skill bots (medium). `friendly` controls blue/red readability + side tint.
-  _botConfig(wkey, team, friendly, side, objective) {
+  // Fixed-skill bots (medium). Readability is by SIDE (CT blue, T red) so it
+  // is correct for both co-op and versus regardless of who is watching.
+  _botConfig(wkey, team, side, objective) {
     const wpn = WEAPONS[wkey];
     const t = 0.62;                                   // fixed skill
     const accuracy = lerp(0.34, 0.82, t);
@@ -419,20 +441,20 @@ export class Game {
       damageMult: 1.0,
       spread: lerp(0.13, 0.02, accuracy) * (wpn.type === 'sniper' ? 0.45 : wpn.type === 'shotgun' ? 1.6 : 1),
       preferredRange: this._prefRange(wpn.type), weapon: wpn,
-      team, friendly, name: friendly ? 'ALLY' : 'ENEMY',
+      team, side, name: (side === 'CT' ? 'CT' : 'T') + ' BOT',
       objective: objective ? objective.clone() : null,
       color: tint[(Math.random() * tint.length) | 0],
     };
   }
 
-  _spawnBots(count, team, side, friendly, pistolRound, startIndex = 0, objective = null) {
+  _spawnBots(count, team, side, pistolRound, startIndex = 0, objective = null) {
     if (count <= 0) return;
     const spawns = this._sideSpawns(side);
     for (let i = 0; i < count; i++) {
       const base = spawns[(startIndex + i) % spawns.length].clone();
       base.x += (Math.random() - 0.5) * 2.5; base.z += (Math.random() - 0.5) * 2.5;
       base.y = this.world.groundHeight(base.x, base.z, 30);
-      const cfg = this._botConfig(this._botWeapon(pistolRound), team, friendly, side, objective);
+      const cfg = this._botConfig(this._botWeapon(pistolRound), team, side, objective);
       this.enemyMgr.spawn(base, cfg);
     }
   }
@@ -490,7 +512,7 @@ export class Game {
                                    : Math.max(0, (this._liveEnd - performance.now()) / 1000);
         P.hud.setTimer(remain);
         P.hud.setCrosshair(P.weapons.inaccuracy, P.camera.fov);
-        P.hud.updateRadar(P.ent, this.enemyMgr.enemies, this.mapInfo.sites);
+        P.hud.updateRadar(P.ent, this._teamMates(P.ent), this.mapInfo.sites);
         P.hud.setLocation(this._zoneName(P.ent.feet));
         if (this.frozen) P.hud.setFreeze(Math.max(0, (this._freezeEnd - performance.now()) / 1000));
       }
@@ -498,7 +520,7 @@ export class Game {
       this._updateAvatars(dt);
       if (!this.frozen) { this.enemyMgr.update(dt, this._allCombatants()); this._maybePickup(); }
       const ctAlive = this._teamAlive(this._teamForSide('CT')), tAlive = this._teamAlive(this._teamForSide('T'));
-      for (const P of this.players) { P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide()); P.hud.setAlive(ctAlive, tAlive); }
+      for (const P of this.players) { P.hud.setMatchScore(this._ctWins(), this._tWins(), this._sideOfTeam(P.ent.team)); P.hud.setAlive(ctAlive, tAlive); }
       for (const P of this.players) P.input.endFrame?.();
 
       // round resolution: a whole team wiped → the other team scores

@@ -98,14 +98,24 @@ export class Menus {
     set('set-invert', s.invertY);
   }
 
-  // Show the team-size picker; disable formats smaller than the human count.
-  showSetup(minSize) {
+  // Show the team-size picker. `allowVersus` reveals the co-op/versus toggle
+  // (2-player only) and resets it to co-op.
+  showSetup(numHumans, allowVersus) {
+    const modeRow = document.querySelector('.setup-mode');
+    if (modeRow) modeRow.classList.toggle('hidden', !allowVersus);
+    document.querySelectorAll('.mode-btn').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'coop'));
+    this.updateSetupSizes(numHumans, false);
+    this.show('setup');
+  }
+  // Disable formats too small for the chosen mode (co-op needs >= numHumans
+  // on one team; versus needs only 1 human per side).
+  updateSetupSizes(numHumans, versus) {
+    const minSize = versus ? 1 : numHumans;
     document.querySelectorAll('.size-btn').forEach((b) => {
       const s = parseInt(b.dataset.size, 10);
       const off = s < minSize;
       b.disabled = off; b.classList.toggle('disabled', off);
     });
-    this.show('setup');
   }
 
   flashHint(msg) {

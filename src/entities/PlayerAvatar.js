@@ -28,6 +28,7 @@ export class PlayerAvatar {
     const vest = new THREE.MeshStandardMaterial({ color: 0x232a24, roughness: 0.55, metalness: 0.3 });
     const rubber = new THREE.MeshStandardMaterial({ color: 0x14140f, roughness: 0.8, metalness: 0.1 });
     const accent = new THREE.MeshStandardMaterial({ color: accentCol, roughness: 0.45, metalness: 0.2, emissive: accentCol, emissiveIntensity: 0.35 });
+    this.accentMat = accent;
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.45, metalness: 0.65 });
     const glove = new THREE.MeshStandardMaterial({ color: 0x242a22, roughness: 0.7 });
 
@@ -76,6 +77,7 @@ export class PlayerAvatar {
   }
 
   setLayer(layer) { this.group.traverse(o => o.layers.set(layer)); }
+  setAccent(hex) { if (this.accentMat) { this.accentMat.color.setHex(hex); this.accentMat.emissive.setHex(hex); } }
   show(v) { this.group.visible = v; }
 
   update(dt, feet, yaw, pitch, alive, speed) {
