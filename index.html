@@ -21,104 +21,11 @@
   <canvas id="viewport"></canvas>
 
   <!-- ===================== In-game HUD ===================== -->
-  <div id="hud" class="hidden" aria-hidden="true">
-    <!-- Dynamic crosshair -->
-    <div id="crosshair">
-      <span class="ch ch-t"></span><span class="ch ch-b"></span>
-      <span class="ch ch-l"></span><span class="ch ch-r"></span>
-      <span class="ch-dot"></span>
-    </div>
-    <!-- Hit marker -->
-    <div id="hitmarker">
-      <span></span><span></span><span></span><span></span>
-    </div>
-    <!-- Damage direction indicators -->
-    <div id="damage-dirs"></div>
-    <!-- Low-health / damage vignette -->
-    <div id="vignette"></div>
-    <!-- Scope overlay (sniper) -->
-    <div id="scope" class="hidden">
-      <div class="scope-lens">
-        <div class="scope-h"></div><div class="scope-v"></div>
-      </div>
-      <div class="scope-mask scope-top"></div>
-      <div class="scope-mask scope-bottom"></div>
-      <div class="scope-mask scope-left"></div>
-      <div class="scope-mask scope-right"></div>
-    </div>
-
-    <!-- Top-center: scores + round timer (CS:GO-style) -->
-    <div id="top-bar">
-      <div class="score-side ct">
-        <span class="score-num" id="score-ct">0</span>
-        <span class="score-lbl">KILLS</span>
-      </div>
-      <div class="timer-wrap">
-        <div id="round-timer">0:00</div>
-        <div id="round-phase">ROUND <b id="round-num">1</b></div>
-      </div>
-      <div class="score-side t">
-        <span class="score-num" id="score-t">0</span>
-        <span class="score-lbl">HOSTILES</span>
-      </div>
-    </div>
-
-    <!-- Kill feed (top-right) -->
-    <div id="killfeed"></div>
-
-    <!-- Radar / minimap (top-left) + money-style stat box below -->
-    <div id="radar">
-      <canvas id="radar-canvas" width="300" height="300"></canvas>
-      <div class="radar-frame"></div>
-      <div class="radar-label" id="radar-loc">DUST</div>
-    </div>
-    <div id="money-box">
-      <div class="money-row"><span class="money-sym">$</span><span id="money-val">0</span><span id="money-gain"></span></div>
-      <div class="money-sub">STREAK <b id="streak-val">0</b></div>
-      <div id="buy-hint" class="hidden">PRESS <b>B</b> TO BUY · <span id="buy-time">0:00</span></div>
-    </div>
-
-    <!-- Bottom-left: health + armor (CS:GO-style) -->
-    <div id="vitals">
-      <div class="vital health">
-        <svg viewBox="0 0 24 24" class="vital-ico"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg>
-        <div class="vital-stack">
-          <span id="health-val">100</span>
-          <div class="vbar"><i id="health-bar"></i></div>
-        </div>
-      </div>
-      <div class="vital armor">
-        <svg viewBox="0 0 24 24" class="vital-ico"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5l8-3z"/></svg>
-        <div class="vital-stack">
-          <span id="armor-val">100</span>
-          <div class="vbar"><i id="armor-bar"></i></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Bottom-right: ammo + weapon (CS:GO-style) -->
-    <div id="ammo-block">
-      <div id="weapon-icon"></div>
-      <div id="weapon-name">AK-47</div>
-      <div id="ammo-counts">
-        <span id="ammo-mag">30</span><span class="ammo-div">/</span><span id="ammo-reserve">90</span>
-        <svg class="ammo-ico" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="13" rx="2.5"/><rect x="9.5" y="16" width="5" height="5"/></svg>
-      </div>
-      <div id="ammo-ticks"></div>
-      <div id="reload-hint" class="hidden">PRESS <b>R</b> TO RELOAD</div>
-      <div id="weapon-slots"></div>
-    </div>
-
-    <!-- Center announcements (round start / win / lose) -->
-    <div id="announce"></div>
-
-    <!-- Freeze-time banner -->
-    <div id="freeze-banner" class="hidden">
-      <div class="fz-label">FREEZE TIME</div>
-      <div class="fz-time" id="freeze-time">0:10</div>
-      <div class="fz-hint">PRESS <b>B</b> TO BUY</div>
-    </div>
-  </div>
+  <!-- Per-view HUD + buy-menu containers (view 1 = top/full, view 2 = bottom) -->
+  <div id="hudv-1"></div>
+  <div id="hudv-2"></div>
+  <div id="buyv-1" class="buyv hidden"></div>
+  <div id="buyv-2" class="buyv hidden"></div>
 
   <!-- ===================== Menus ===================== -->
   <div id="menu" class="overlay">
@@ -127,10 +34,12 @@
       <h1 class="game-title">OPERATION<span>DESERT STORM</span></h1>
       <p class="tagline">Tactical browser FPS — clear the site, survive the rounds.</p>
       <div class="menu-buttons">
-        <button id="btn-play" class="btn btn-primary">DEPLOY</button>
+        <button id="btn-play" class="btn btn-primary">DEPLOY (1P)</button>
+        <button id="btn-coop" class="btn">2 PLAYERS — CO-OP</button>
         <button id="btn-howto" class="btn">BRIEFING</button>
         <button id="btn-settings" class="btn">SETTINGS</button>
       </div>
+      <div id="menu-hint" class="menu-hint"></div>
       <div id="loadprog" class="loadprog hidden"><div class="bar"><i></i></div><span>Forging assets…</span></div>
       <div class="menu-foot">Headphones recommended · Desktop + mouse required</div>
     </div>
@@ -186,25 +95,6 @@
         <button id="btn-resume" class="btn btn-primary">RESUME</button>
         <button id="btn-pause-settings" class="btn">SETTINGS</button>
         <button id="btn-quit" class="btn btn-danger">ABANDON MISSION</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Buy menu -->
-  <div id="buymenu" class="overlay hidden">
-    <div class="buy-wrap">
-      <div class="buy-head">
-        <div class="buy-title">BUY MENU</div>
-        <div class="buy-money">BALANCE <b id="buy-balance">$0</b></div>
-        <div class="buy-timer">BUY TIME <b id="buy-countdown">0:22</b></div>
-      </div>
-      <div class="buy-cols">
-        <div class="buy-col" id="buy-col-left"></div>
-        <div class="buy-col" id="buy-col-right"></div>
-      </div>
-      <div class="buy-foot">
-        <div class="buy-owned" id="buy-owned"></div>
-        <button id="buy-deploy" class="btn btn-primary">DEPLOY <span class="kbd-mini">B</span></button>
       </div>
     </div>
   </div>

@@ -41,6 +41,7 @@ export class Menus {
     const click = (id, fn) => byId(id)?.addEventListener('click', () => { this._click(); fn(); });
 
     click('btn-play', () => this._emit('play'));
+    click('btn-coop', () => this._emit('coop'));
     click('btn-howto', () => this.show('briefing'));
     click('btn-settings', () => this.show('settings'));
     click('btn-resume', () => this._emit('resume'));
@@ -94,6 +95,12 @@ export class Menus {
     set('set-quality', s.quality);
     set('set-bloom', s.bloom);
     set('set-invert', s.invertY);
+  }
+
+  flashHint(msg) {
+    const h = document.getElementById('menu-hint'); if (!h) return;
+    h.textContent = msg; h.classList.add('show');
+    clearTimeout(this._hintT); this._hintT = setTimeout(() => h.classList.remove('show'), 3500);
   }
 
   show(name) {

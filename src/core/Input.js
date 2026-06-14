@@ -5,6 +5,7 @@
 export class Input {
   constructor(domElement) {
     this.dom = domElement;
+    this.kind = 'keyboard';
     this.keys = new Set();
     this.justPressed = new Set();   // edge-triggered, cleared each frame
     this.mouseDX = 0;
@@ -67,9 +68,19 @@ export class Input {
   }
   exitLock() { if (document.pointerLockElement) document.exitPointerLock(); }
 
+  update() { /* keyboard/mouse is event-driven; gamepads poll here */ }
+
   // Edge-trigger helpers
   pressed(code) { return this.justPressed.has(code); }
   down(code) { return this.keys.has(code); }
+
+  // Source-agnostic analog move axis: forward (+W/-S), strafe (+D/-A).
+  moveAxis() {
+    return {
+      f: (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0),
+      s: (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0),
+    };
+  }
 
   // Consume look deltas (call once per frame, then reset).
   consumeLook() {

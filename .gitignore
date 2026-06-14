@@ -7,4 +7,4 @@
 /root/.cache/
 node_modules/
 package/
-tools/shot*.png
+tools/*.png

@@ -228,6 +228,7 @@ export class Enemy {
 
   _perceive(dt, ctx) {
     const p = ctx.player;
+    if (!p) { this.canSee = false; this.alert = Math.max(0, this.alert - dt * 0.1); return; }
     const eye = this.eyePosition(new THREE.Vector3());
     const pe = p.eyePos;
     const toP = new THREE.Vector3().subVectors(pe, eye);
@@ -529,14 +530,27 @@ export class EnemyManager {
     return e;
   }
 
-  update(dt, player) {
+  update(dt, players) {
+    const list = Array.isArray(players) ? players : [players];
     const ctx = {
-      player, world: this.world, nav: this.nav, audio: this.audio,
+      player: null, players: list, world: this.world, nav: this.nav, audio: this.audio,
       fx: this.fx, combat: this.combat, enemies: this.enemies,
       now: this._now, camera: this.camera,
     };
+    const tmp = new THREE.Vector3();
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
+      // pick this bot's target: nearest visible alive player, else nearest alive
+      let target = null, tvis = false, tdist = Infinity;
+      const eye = e.eyePosition(tmp).clone();
+      for (const p of list) {
+        if (!p || !p.alive) continue;
+        const d = e.feet.distanceTo(p.position);
+        const vis = this.world.lineOfSight(eye, p.eyePos);
+        if (vis) { if (!tvis || d < tdist) { target = p; tvis = true; tdist = d; } }
+        else if (!tvis && d < tdist) { target = p; tdist = d; }
+      }
+      ctx.player = target;
       e.update(dt, ctx);
       if (e.finished()) { e.dispose(); this.enemies.splice(i, 1); }
     }

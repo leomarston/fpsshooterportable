@@ -14,23 +14,23 @@ export class Combat {
     this.world = world;
     this.fx = fx;
     this.audio = audio;
-    this.player = null;
+    this.players = [];       // player entities (1 or 2)
     this.enemies = null;     // EnemyManager
-    // hooks (set by Game)
-    this.onHitmarker = null; // (headshot, killed)
-    this.onKill = null;      // (enemy, weapon, headshot)
-    this.onPlayerHit = null; // (dmg, fromPos, headshot)
-    this.onScope = null;     // (bool)
+    // hooks (set by Game) — all routed with the relevant player
+    this.onHitmarker = null; // (owner, headshot, killed)
+    this.onKill = null;      // (owner, enemy, weapon, headshot)
+    this.onPlayerHit = null; // (ent, dmg, fromPos, headshot)
+    this.onScope = null;     // (owner, bool)
     this._tmpOrigin = new THREE.Vector3();
   }
 
-  setPlayer(p) { this.player = p; }
+  setPlayers(arr) { this.players = arr; }
   setEnemies(m) { this.enemies = m; }
   muzzleFlashWorld(pos) { this.fx.muzzleFlashWorld(pos); }
-  setScope(on) { this.onScope?.(on); }
+  setScope(on, owner) { this.onScope?.(owner, on); }
 
   /* ----------------------- player → world / enemies ----------------------- */
-  resolveShot(origin, dir, weapon, isFirst, isMelee = false) {
+  resolveShot(origin, dir, weapon, isFirst, isMelee = false, owner = null) {
     const range = weapon.range || 100;
     const wHit = this.world.raycast(origin, dir, range, true);
     const wDist = wHit ? wHit.dist : range;
@@ -62,8 +62,8 @@ export class Combat {
       this.fx.blood(point, dir);
       const killed = best.enemy.hit(dmg, best.headshot, dir, this.fx);
       this.audio.hitMarker(best.headshot);
-      this.onHitmarker?.(best.headshot, killed);
-      if (killed) this.onKill?.(best.enemy, weapon, best.headshot);
+      this.onHitmarker?.(owner, best.headshot, killed);
+      if (killed) this.onKill?.(owner, best.enemy, weapon, best.headshot);
       return { hit: 'enemy', headshot: best.headshot, killed, point };
     }
 
@@ -81,37 +81,41 @@ export class Combat {
     return { hit: null };
   }
 
-  /* ------------------------- enemy → world / player ------------------------- */
+  /* ------------------------- enemy → world / players ------------------------- */
   resolveEnemyShot(origin, dir, enemy, playerEye) {
     const w = enemy.cfg.weapon;
     const range = w.range || 90;
     const wHit = this.world.raycast(origin, dir, range, true);
     const wDist = wHit ? wHit.dist : range;
 
-    const p = this.player;
-    let pt = null, headshot = false;
-    if (p && p.alive) {
+    // nearest hit player (each player tested for body/head)
+    let best = null;
+    for (const p of this.players) {
+      if (!p.alive) continue;
       const body = rayAABB(origin, dir, playerBox(p));
       const head = rayAABB(origin, dir, playerHeadBox(p));
+      let pt = null, headshot = false;
       if (head != null && (body == null || head <= body)) { pt = head; headshot = true; }
       else if (body != null) { pt = body; headshot = false; }
+      if (pt != null && pt < wDist && pt <= range && (!best || pt < best.pt)) best = { p, pt, headshot };
     }
 
-    if (pt != null && pt < wDist && pt <= range) {
-      const point = origin.clone().addScaledVector(dir, pt);
-      let dmg = w.damage * falloff(w, pt);
-      if (headshot) dmg *= (w.headshotMult || 1);
+    if (best) {
+      const p = best.p, point = origin.clone().addScaledVector(dir, best.pt);
+      let dmg = w.damage * falloff(w, best.pt);
+      if (best.headshot) dmg *= (w.headshotMult || 1);
       dmg *= enemy.cfg.damageMult || 1;
       this.fx.tracer(origin, point);
-      p.takeDamage(dmg, enemy.position.clone().setY(point.y), headshot);
-      this.onPlayerHit?.(dmg, enemy.position, headshot);
+      p.takeDamage(dmg, enemy.position.clone().setY(point.y), best.headshot);
+      this.onPlayerHit?.(p, dmg, enemy.position, best.headshot);
       return;
     }
 
-    // missed the player — whizz if it passed close, then hit the world
-    if (p && p.alive) {
+    // missed everyone — whizz if it passed close to a player, then hit the world
+    for (const p of this.players) {
+      if (!p.alive) continue;
       const close = pointLineDist(p.eyePos, origin, dir, Math.min(wDist, range));
-      if (close < 1.6) this.audio.whizz(null, this._panFor(origin));
+      if (close < 1.6) { this.audio.whizz(null, this._panFor(origin)); break; }
     }
     if (wHit) {
       this.fx.tracer(origin, wHit.point);

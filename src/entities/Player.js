@@ -103,8 +103,10 @@ export class Player {
   }
 
   _wishDir() {
-    const f = (this.input.down('KeyW') ? 1 : 0) - (this.input.down('KeyS') ? 1 : 0);
-    const s = (this.input.down('KeyD') ? 1 : 0) - (this.input.down('KeyA') ? 1 : 0);
+    const a = this.input.moveAxis ? this.input.moveAxis() : { f: 0, s: 0 };
+    let f = a.f, s = a.s;
+    const mag = Math.hypot(f, s);
+    if (mag > 1) { f /= mag; s /= mag; }    // clamp analog diagonals
     // forward/right in world space from yaw
     const sinY = Math.sin(this.yaw), cosY = Math.cos(this.yaw);
     // forward = (-sinY, 0, -cosY); right = (cosY, 0, -sinY)

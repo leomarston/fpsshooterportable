@@ -22,8 +22,10 @@ export class WeaponManager {
     this.audio = audio;
     this.player = player;
     this.combat = combat;          // { resolveShot, muzzleFlashWorld }
-    this.vmScene = engine.vmScene;
-    if (engine.envMap) this.vmScene.environment = engine.envMap;  // reflections on the gun
+    this.owner = null;             // the player object that owns this weapon (set by Game)
+    // each player's first-person weapon lives in its own overlay scene
+    this.vmScene = new THREE.Scene();
+    engine.addViewmodelLights(this.vmScene);
 
     this.models = {};              // key -> {group, muzzle, parts}
     this.ammo = {};                // key -> {mag, reserve}
@@ -195,7 +197,7 @@ export class WeaponManager {
     const pellets = w.pellets || 1;
     for (let p = 0; p < pellets; p++) {
       const dir = this._spreadDir(baseDir, this.inaccuracy);
-      this.combat.resolveShot(origin, dir, w, p === 0);
+      this.combat.resolveShot(origin, dir, w, p === 0, false, this.owner);
     }
 
     // recoil to player view
@@ -227,7 +229,7 @@ export class WeaponManager {
     this.reloadAnim = 0; this.swayX += 0.2;
     const origin = new THREE.Vector3(); this.camera.getWorldPosition(origin);
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
-    this.combat.resolveShot(origin, dir, w, true, true);
+    this.combat.resolveShot(origin, dir, w, true, true, this.owner);
     this.audio?.impact('metal', null);
   }
 
@@ -294,7 +296,7 @@ export class WeaponManager {
       this.adsAmount = THREE.MathUtils.damp(this.adsAmount, target, 18, dt || 0.0001);
       const fov = THREE.MathUtils.lerp(this.baseFov, w.scopeFov, this.adsAmount);
       this.engine.setFov?.(fov);
-      this.combat.setScope?.(this.scoped && this.adsAmount > 0.6);
+      this.combat.setScope?.(this.scoped && this.adsAmount > 0.6, this.owner);
       this.currentModel.group.visible = this.adsAmount < 0.5;
     } else {
       const target = want ? 1 : 0;

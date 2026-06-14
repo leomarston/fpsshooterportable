@@ -1,10 +1,11 @@
 /**
- * main — bootstrap. Creates the engine/input/audio/HUD/menus/game,
- * wires the pointer-lock flow and menu actions, applies settings, and
- * runs the fixed-clamped render loop.
+ * main — bootstrap. Creates engine/audio/menus, builds per-player input,
+ * HUD and buy-menu slots (P1 = keyboard+mouse, P2 = gamepad), wires the
+ * menus + pointer-lock, and runs the render loop (1 or 2 split views).
  */
 import { Engine } from './core/Engine.js';
 import { Input } from './core/Input.js';
+import { GamepadInput } from './core/GamepadInput.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { Menus } from './ui/Menus.js';
@@ -15,29 +16,49 @@ const canvas = document.getElementById('viewport');
 const audio = new AudioEngine();
 const menus = new Menus(audio);
 const engine = new Engine(canvas, menus.settings.quality);
-const input = new Input(canvas);
-const hud = new HUD();
-const game = new Game(engine, input, audio, hud, menus);
-const buyMenu = new BuyMenu(audio);
-game.buyMenu = buyMenu;
+const game = new Game(engine, audio);
+game.menus = menus;
 
-// Closing the buy menu (DEPLOY) drops into the round and re-locks the mouse.
-function deployFromBuy() { game.closeBuy(); input.requestLock(); }
-buyMenu.onClose = deployFromBuy;
+// Player 1 = keyboard + mouse, Player 2 = gamepad.
+const input1 = new Input(canvas);
+const gamepad2 = new GamepadInput(0);
+const $ = (id) => document.getElementById(id);
+const hud1 = new HUD($('hudv-1'), { accent: '#39ff8e', label: 'P1' });
+const hud2 = new HUD($('hudv-2'), { accent: '#4ad6ff', label: 'P2' });
+const buy1 = new BuyMenu(audio, $('buyv-1'));
+const buy2 = new BuyMenu(audio, $('buyv-2'));
+game.configureSlots([
+  { input: input1, camera: engine.camera, hud: hud1, buyMenu: buy1, name: 'PLAYER 1', color: 0x39ff8e },
+  { input: gamepad2, camera: engine.camera2, hud: hud2, buyMenu: buy2, name: 'PLAYER 2', color: 0x4ad6ff },
+]);
 
-input.sensitivity = menus.settings.sensitivity;
-input.invertY = menus.settings.invertY;
+input1.sensitivity = menus.settings.sensitivity;
+input1.invertY = menus.settings.invertY;
+gamepad2.sensitivity = menus.settings.sensitivity;
+gamepad2.invertY = menus.settings.invertY;
 audio.masterVolume = menus.settings.volume / 100;
 engine.setFov(menus.settings.fov);
 
+function applyLayout(n) {
+  const cls = (el, c) => { el.classList.remove('full', 'split-top', 'split-bottom', 'hidden'); el.classList.add(c); };
+  if (n >= 2) {
+    cls($('hudv-1'), 'split-top'); cls($('hudv-2'), 'split-bottom');
+    cls($('buyv-1'), 'split-top'); cls($('buyv-2'), 'split-bottom');
+    $('buyv-1').classList.add('hidden'); $('buyv-2').classList.add('hidden');
+  } else {
+    cls($('hudv-1'), 'full'); $('hudv-2').classList.add('hidden');
+    cls($('buyv-1'), 'full'); $('buyv-2').classList.add('hidden');
+  }
+}
+
 function applySettings(s, key) {
-  input.sensitivity = s.sensitivity;
-  input.invertY = s.invertY;
+  input1.sensitivity = s.sensitivity; input1.invertY = s.invertY;
+  gamepad2.sensitivity = s.sensitivity; gamepad2.invertY = s.invertY;
   audio.setVolume(s.volume / 100);
-  if (game.weapons) game.weapons.setBaseFov(s.fov); else engine.setFov(s.fov);
+  for (const P of game.players) P.weapons.setBaseFov(s.fov);
+  if (!game.players.length) engine.setFov(s.fov);
   if (key === 'bloom' || key === undefined) engine.setBloom(s.bloom);
   if (key === 'quality') {
-    // live-apply what we cheaply can; full quality applies on reload
     const q = { high: 1.5, medium: 1.25, low: 1.0 }[s.quality] || 1.25;
     engine.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q));
     engine.composer.setPixelRatio(Math.min(window.devicePixelRatio, q));
@@ -46,26 +67,22 @@ function applySettings(s, key) {
   }
 }
 
-/* ----------------------------- pointer lock ----------------------------- */
-input.onLockChange = (locked) => {
-  if (locked) { menus.hideLock(); }
-  else if (game.state === 'playing') { game.pause(); }
-};
-
-function tryLock() {
-  if (game.state === 'playing' && !input.locked) input.requestLock();
-}
+/* ----------------------------- pointer lock (P1) ----------------------------- */
+input1.onLockChange = (locked) => { if (locked) menus.hideLock(); };
+function tryLock() { if (game.state === 'playing' && !input1.locked) input1.requestLock(); }
 canvas.addEventListener('click', tryLock);
-document.getElementById('lock-prompt').addEventListener('click', tryLock);
+$('lock-prompt').addEventListener('click', tryLock);
 
 addEventListener('keydown', (e) => {
+  const P1 = game.players[0];
   if (e.code === 'Escape') {
-    if (game.state === 'buy') deployFromBuy();
+    if (game.state === 'buy' && P1 && P1.buyOpen) game.closeBuy(P1);
     else if (game.state === 'playing') game.pause();
     else if (game.state === 'paused') resumeGame();
-  } else if (e.code === 'KeyB') {
-    if (game.state === 'playing') game.openBuy();
-    else if (game.state === 'buy') deployFromBuy();
+  } else if (e.code === 'KeyB' && P1) {
+    if (game.state === 'playing') game.openBuy(P1);
+    else if (game.state === 'buy' && P1.buyOpen) game.closeBuy(P1);
+    else if (game.state === 'buy') game.openBuy(P1);
   }
 });
 addEventListener('blur', () => { if (game.state === 'playing') game.pause(); });
@@ -78,58 +95,55 @@ async function ensureBuilt() {
   await game.build((p, t) => menus.loadProgress(p, t));
   menus.hideLoadProgress();
 }
-
-menus.on('play', async () => {
+async function start(n) {
   audio.resume();
-  if (!game.built) { await ensureBuilt(); }
+  if (!game.built) await ensureBuilt();
+  applyLayout(n);
   applySettings(menus.settings);
   menus.hideAll();
-  game.startGame();          // opens the buy menu (round 1 buy phase)
+  game.startGame(n);
+}
+menus.on('play', () => start(1));
+menus.on('coop', () => {
+  if (!gamepad2.connected) menus.flashHint('Connect a gamepad for Player 2 (you can still start).');
+  start(2);
 });
-
-function resumeGame() { game.resume(); input.requestLock(); }
+function resumeGame() { game.resume(); if (game.players[0]) input1.requestLock(); }
 menus.on('resume', resumeGame);
 menus.on('quit', () => game.quitToMenu());
-menus.on('retry', () => { audio.resume(); applySettings(menus.settings); game.startGame(); });
+menus.on('retry', () => start(game.numPlayers || 1));
 menus.on('mainmenu', () => game.quitToMenu());
-menus.on('nextround', () => { game.nextRound(); });   // opens buy phase
+menus.on('nextround', () => game.nextRound());
 menus.on('settings', (s, key) => applySettings(s, key));
-menus.on('closeOverlay', (id) => {
-  // returning from settings while paused -> keep pause menu visible
-  if (game.state === 'paused' && id === 'settings') menus.show('pause');
-});
+menus.on('closeOverlay', (id) => { if (game.state === 'paused' && id === 'settings') menus.show('pause'); });
 
 /* ------------------------------- main loop ------------------------------- */
 let last = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
-  let dt = (now - last) / 1000;
-  last = now;
-  if (dt > 0.05) dt = 0.05;        // clamp to avoid tunneling on stalls
-  if (dt < 0) dt = 0;
+  let dt = (now - last) / 1000; last = now;
+  if (dt > 0.05) dt = 0.05; if (dt < 0) dt = 0;
 
-  let shouldUpdate = false;
-  if (game.state === 'playing') {
-    if (input.locked) { input.enabled = true; menus.hideLock(); shouldUpdate = true; }
-    else { input.enabled = false; menus.showLock(); }
-  } else if (game.state === 'roundend' || game.state === 'dead' || game.state === 'buy') {
-    input.enabled = false; shouldUpdate = true;   // buy: world frozen, menu ticks
+  const s = game.state;
+  if (s === 'playing') {
+    input1.enabled = true;
+    if (input1.locked) menus.hideLock(); else menus.showLock();
+    game.update(dt);
+  } else if (s === 'buy') {
+    input1.enabled = true; menus.hideLock();
+    game.update(dt);
+  } else if (s === 'roundend' || s === 'dead') {
+    input1.enabled = false; game.update(dt);
   } else {
-    input.enabled = false;
+    input1.enabled = false;
   }
 
-  if (shouldUpdate) game.update(dt);
-  engine.render();
-  input.endFrame();
+  engine.render(game.players.length ? game.views() : null);
+  input1.endFrame();
 }
 requestAnimationFrame(loop);
 
-// Pre-build in the background so DEPLOY is instant and locks within the gesture.
-(async () => {
-  // small delay so the menu paints first
-  await new Promise(r => setTimeout(r, 60));
-  try { await ensureBuilt(); } catch (e) { console.error('Build failed:', e); }
-})();
+// Pre-build in the background so DEPLOY is instant.
+(async () => { await new Promise(r => setTimeout(r, 60)); try { await ensureBuilt(); } catch (e) { console.error('Build failed:', e); } })();
 
-// expose for debugging
 window.__game = game; window.__engine = engine;

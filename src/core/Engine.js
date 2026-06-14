@@ -84,18 +84,29 @@ export class Engine {
     window.addEventListener('resize', this._onResize);
   }
 
-  // Separate overlay scene for the first-person weapon so it never clips
-  // into world geometry and isn't affected by world fog/bloom.
+  // Shared overlay camera for first-person weapons. Each player's weapon
+  // lives in its own viewmodel scene (built by its WeaponManager) so it
+  // never clips into world geometry and isn't affected by world fog/bloom.
   _buildViewmodelLayer() {
-    this.vmScene = new THREE.Scene();
     this.vmCamera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.01, 50);
-    this.vmScene.add(new THREE.HemisphereLight(0xd8e4ff, 0x66584a, 1.0));
-    const key = new THREE.DirectionalLight(0xfff2da, 2.2);
-    key.position.set(-0.6, 1.2, 1.5);
-    this.vmScene.add(key);
-    const fill = new THREE.DirectionalLight(0x95a8c8, 0.7);
-    fill.position.set(1.2, 0.3, 0.6);
-    this.vmScene.add(fill);
+    // a second world camera for split-screen player 2
+    this.camera2 = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 1200);
+    this.camera2.rotation.order = 'YXZ';
+    this.split = false;
+  }
+
+  // Standard lights for a viewmodel scene (called by WeaponManager).
+  addViewmodelLights(scene) {
+    scene.add(new THREE.HemisphereLight(0xd8e4ff, 0x66584a, 1.0));
+    const key = new THREE.DirectionalLight(0xfff2da, 2.2); key.position.set(-0.6, 1.2, 1.5); scene.add(key);
+    const fill = new THREE.DirectionalLight(0x95a8c8, 0.7); fill.position.set(1.2, 0.3, 0.6); scene.add(fill);
+    if (this.envMap) scene.environment = this.envMap;
+  }
+
+  // Configure for 1 or 2 local players (horizontal split for 2).
+  setPlayerCount(n) {
+    this.split = n >= 2;
+    this.resize();
   }
 
   _buildLights() {
@@ -245,9 +256,11 @@ export class Engine {
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    if (this.vmCamera) { this.vmCamera.aspect = w / h; this.vmCamera.updateProjectionMatrix(); }
+    // split-screen stacks two viewports vertically -> each is w x h/2
+    const aspect = this.split ? (w / (h / 2)) : (w / h);
+    this.camera.aspect = aspect; this.camera.updateProjectionMatrix();
+    this.camera2.aspect = aspect; this.camera2.updateProjectionMatrix();
+    if (this.vmCamera) { this.vmCamera.aspect = aspect; this.vmCamera.updateProjectionMatrix(); }
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
     this.bloomPass?.setSize(w, h);
@@ -255,15 +268,39 @@ export class Engine {
     this._updateFxaa();
   }
 
-  render() {
-    this.composer.render();
-    // Composite the first-person weapon on top of the post-processed frame.
-    if (this.vmScene && this.vmCamera) {
-      this.renderer.autoClear = false;
-      this.renderer.clearDepth();
-      this.renderer.render(this.vmScene, this.vmCamera);
-      this.renderer.autoClear = true;
+  /**
+   * Render the given player views. views = [{camera, vmScene}, ...].
+   * 1 view -> full post-FX composer. 2 views -> direct dual scissor render
+   * (top = views[0], bottom = views[1]).
+   */
+  render(views) {
+    const r = this.renderer;
+    if (!views || views.length <= 1) {
+      const v = (views && views[0]) || { camera: this.camera, vmScene: null };
+      this.renderPass.camera = v.camera || this.camera;
+      this.composer.render();
+      if (v && v.vmScene) {
+        r.autoClear = false; r.clearDepth();
+        r.render(v.vmScene, this.vmCamera);
+        r.autoClear = true;
+      }
+      return;
     }
+    // split: two stacked halves
+    const w = r.domElement.width, h = r.domElement.height;   // device pixels
+    const halfH = Math.floor(h / 2);
+    const rects = [[0, halfH, w, h - halfH], [0, 0, w, halfH]]; // GL y is bottom-up
+    r.setScissorTest(true);
+    for (let i = 0; i < 2; i++) {
+      const [x, y, vw, vh] = rects[i];
+      r.setViewport(x, y, vw, vh);
+      r.setScissor(x, y, vw, vh);
+      r.clear();
+      r.render(this.scene, views[i].camera);
+      if (views[i].vmScene) { r.clearDepth(); r.render(views[i].vmScene, this.vmCamera); }
+    }
+    r.setScissorTest(false);
+    r.setViewport(0, 0, w, h);
   }
 
   dispose() {
