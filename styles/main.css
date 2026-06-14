@@ -69,20 +69,22 @@ canvas#viewport{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-
 .dmg-arc.show{animation:dmgflash .9s ease-out}
 @keyframes dmgflash{0%{opacity:.95}100%{opacity:0}}
 
-/* Top bar */
-#top-bar{position:absolute;top:14px;left:50%;transform:translateX(-50%);
-  display:flex;align-items:center;gap:18px;
-  background:linear-gradient(180deg,#1b1712cc,#1b171266);
-  border:1px solid var(--line);border-top:2px solid var(--sand);
-  padding:7px 20px;clip-path:polygon(10px 0,100% 0,calc(100% - 10px) 100%,0 100%)}
-#round-pill{display:flex;align-items:baseline;gap:7px}
-#round-label{font-size:12px;color:var(--sand);letter-spacing:.18em}
-#round-num{font-size:22px;font-weight:700;color:#fff;line-height:1}
-#objective{font-size:13px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;
-  border-left:1px solid var(--line);border-right:1px solid var(--line);padding:0 16px}
-#enemy-counter{display:flex;align-items:center;gap:7px;font-size:20px;font-weight:700;color:#ff6b5b}
-.ec-icon{width:13px;height:13px;background:#ff6b5b;
-  clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%);box-shadow:0 0 6px #ff6b5b88}
+/* Top-center scoreboard (CS:GO-style) */
+#top-bar{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:stretch;height:54px;
+  background:linear-gradient(180deg,#11100bdd,#11100b9c);
+  border:1px solid #00000088;box-shadow:0 3px 14px #0008}
+.score-side{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-width:96px;padding:0 16px}
+.score-side.ct{background:linear-gradient(180deg,#2f5b86cc,#1d3a57aa)}
+.score-side.t{background:linear-gradient(180deg,#9a7b34cc,#6e5824aa)}
+.score-num{font-size:30px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000}
+.score-lbl{font-size:9px;letter-spacing:.18em;color:#ffffffcc;margin-top:2px}
+.timer-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:120px;padding:0 18px}
+#round-timer{font-size:26px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+#round-timer.urgent{color:#ff5b4d;animation:blink 1s step-start infinite}
+#round-phase{font-size:11px;letter-spacing:.14em;color:var(--sand);margin-top:3px}
+#round-phase b{color:#fff}
 
 /* Kill feed */
 #killfeed{position:absolute;top:64px;right:18px;display:flex;flex-direction:column;
@@ -98,53 +100,61 @@ canvas#viewport{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-
 @keyframes kfin{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
 @keyframes kfout{to{opacity:0;transform:translateX(30px)}}
 
-/* Vitals */
-#vitals{position:absolute;left:22px;bottom:22px;display:flex;gap:14px;align-items:flex-end}
-.vital{display:flex;align-items:center;gap:9px;background:#120f0bb0;border:1px solid var(--line);
-  border-bottom:2px solid currentColor;padding:8px 16px 8px 12px;min-width:118px;
-  clip-path:polygon(0 0,100% 0,100% 100%,12px 100%,0 calc(100% - 12px))}
-.vital-ico{width:26px;height:26px;fill:currentColor;flex:0 0 auto}
-.vital span{font-size:30px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums}
+/* Vitals (bottom-left, CS:GO-style) */
+#vitals{position:absolute;left:26px;bottom:24px;display:flex;gap:26px;align-items:flex-end}
+.vital{display:flex;align-items:center;gap:11px}
+.vital-ico{width:30px;height:30px;fill:currentColor;flex:0 0 auto;filter:drop-shadow(0 1px 2px #000)}
+.vital-stack{display:flex;flex-direction:column;gap:4px}
+.vital-stack span{font-size:38px;font-weight:700;color:#fff;line-height:.85;font-variant-numeric:tabular-nums;text-shadow:0 2px 4px #000}
+.vbar{width:120px;height:4px;background:#000000aa;overflow:hidden;border-radius:1px}
+.vbar i{display:block;height:100%;width:100%;background:currentColor;transition:width .18s ease}
 .vital.health{color:var(--hp)}
-.vital.health.low{color:var(--hp-low);animation:vitalflash .8s ease-in-out infinite}
+.vital.health.low{color:var(--hp-low)}
+.vital.health.low .vital-stack span{animation:vitalflash .8s ease-in-out infinite}
 .vital.armor{color:var(--armor)}
-@keyframes vitalflash{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes vitalflash{0%,100%{opacity:1}50%{opacity:.5}}
 
-/* Ammo */
-#ammo-block{position:absolute;right:24px;bottom:22px;text-align:right}
-#weapon-name{font-size:15px;letter-spacing:.22em;color:var(--sand);text-transform:uppercase;
-  margin-bottom:2px;text-shadow:0 1px 2px #000}
-#ammo-counts{display:flex;align-items:baseline;justify-content:flex-end;gap:6px}
-#ammo-mag{font-size:46px;font-weight:700;color:#fff;line-height:.9;font-variant-numeric:tabular-nums;
-  text-shadow:0 2px 4px #000}
+/* Ammo (bottom-right, CS:GO-style) */
+#ammo-block{position:absolute;right:30px;bottom:24px;text-align:right}
+#weapon-name{font-size:14px;letter-spacing:.2em;color:#fff;text-transform:uppercase;
+  margin-bottom:2px;text-shadow:0 1px 2px #000;opacity:.9}
+#ammo-counts{display:flex;align-items:baseline;justify-content:flex-end;gap:5px}
+#ammo-mag{font-size:50px;font-weight:700;color:#fff;line-height:.85;font-variant-numeric:tabular-nums;
+  text-shadow:0 2px 5px #000}
 #ammo-mag.low{color:var(--danger)}
-.ammo-div{font-size:26px;color:var(--text-dim)}
-#ammo-reserve{font-size:26px;color:var(--text-dim);font-variant-numeric:tabular-nums}
-#reload-hint{font-size:12px;color:var(--warn);letter-spacing:.12em;margin-top:3px;
+.ammo-div{font-size:24px;color:#ffffff66}
+#ammo-reserve{font-size:24px;color:#ffffffaa;font-variant-numeric:tabular-nums}
+.ammo-ico{width:20px;height:20px;fill:#ffffffaa;margin-left:5px;align-self:center}
+#ammo-ticks{display:flex;gap:2px;justify-content:flex-end;margin-top:5px;height:9px}
+#ammo-ticks i{width:2px;height:9px;background:#ffe08a;box-shadow:0 0 2px #000;opacity:.9}
+#ammo-ticks i.spent{background:#ffffff22;box-shadow:none}
+#reload-hint{font-size:12px;color:var(--warn);letter-spacing:.12em;margin-top:5px;
   animation:blink 1s step-start infinite}
 #reload-hint b{color:#fff}
 @keyframes blink{50%{opacity:.3}}
-#weapon-slots{display:flex;gap:6px;justify-content:flex-end;margin-top:9px}
+#weapon-slots{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
 .wslot{display:flex;align-items:center;gap:6px;padding:3px 9px;background:#0c0a07aa;
   border:1px solid var(--line);font-size:12px;color:var(--text-dim);letter-spacing:.06em}
 .wslot .k{color:var(--sand);font-weight:700}
 .wslot.active{border-color:var(--sand);background:#2a2317cc;color:#fff;box-shadow:0 0 8px #c2a05a44}
 
-/* Mini scoreboard */
-#scoreboard-mini{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);
-  display:flex;gap:26px;background:#0c0a0799;border:1px solid var(--line);
-  border-top:2px solid var(--sand);padding:7px 24px}
-.sm-item{display:flex;flex-direction:column;align-items:center;min-width:54px}
-.sm-k{font-size:22px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums}
-.sm-l{font-size:10px;letter-spacing:.18em;color:var(--text-dim)}
+/* Radar / minimap (top-left, CS:GO-style square) */
+#radar{position:absolute;left:20px;top:16px;width:230px;height:230px}
+#radar-canvas{width:230px;height:230px;display:block;background:#0a0c0f;
+  border:1px solid #00000088}
+.radar-frame{position:absolute;inset:0;pointer-events:none;
+  border:2px solid #161310;box-shadow:inset 0 0 0 1px #ffffff14,0 3px 14px #0007}
+.radar-label{position:absolute;left:8px;bottom:6px;font-size:11px;letter-spacing:.22em;
+  color:#ffffff66;pointer-events:none}
 
-/* Radar */
-#radar{position:absolute;left:22px;top:18px;width:160px;height:160px}
-#radar-canvas{width:160px;height:160px;display:block;
-  border:1px solid var(--line);border-radius:50%;background:#0c0a07cc;
-  box-shadow:inset 0 0 30px #000}
-.radar-ring{position:absolute;inset:0;border-radius:50%;pointer-events:none;
-  box-shadow:inset 0 0 0 1px #c2a05a44;border:2px solid #161310}
+/* Money-style stat box (below radar, mirrors CS:GO money placement) */
+#money-box{position:absolute;left:20px;top:256px;min-width:120px;
+  background:#11100bc0;border-left:3px solid var(--good);padding:5px 12px}
+.money-row{display:flex;align-items:baseline;gap:2px}
+.money-sym{color:var(--good);font-size:18px;font-weight:700}
+#money-val{color:#fff;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+.money-sub{font-size:10px;letter-spacing:.14em;color:var(--text-dim);margin-top:1px}
+.money-sub b{color:var(--sand-bright)}
 
 /* Announcements */
 #announce{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);

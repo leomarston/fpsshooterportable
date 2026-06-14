@@ -45,6 +45,12 @@ try {
       g.player.pitch = s.pitch;
       g.player._updateCamera(0.016);
       g.audio.setListener(g.engine.camera);
+      // drive the HUD so the screenshot reflects a live layout
+      g.hud.setHealth(g.player.health); g.hud.setArmor(g.player.armor);
+      g.hud.setKills(7); g.hud.setEnemies(g.enemyMgr.aliveCount); g.hud.setScore(2150); g.hud.setStreak(3);
+      g.hud.setTimer(48); g.hud.setRound(g.round);
+      g.hud.updateRadar(g.player, g.enemyMgr.enemies, g.mapInfo.sites);
+      g.hud.setLocation(g._zoneName(g.player.feet));
     }, s);
     // let GTAO/temporal settle
     for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 60)); await page.evaluate(() => window.__engine.render()); }

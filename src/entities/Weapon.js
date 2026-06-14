@@ -22,6 +22,7 @@ export class WeaponManager {
     this.player = player;
     this.combat = combat;          // { resolveShot, muzzleFlashWorld }
     this.vmScene = engine.vmScene;
+    if (engine.envMap) this.vmScene.environment = engine.envMap;  // reflections on the gun
 
     this.models = {};              // key -> {group, muzzle, parts}
     this.ammo = {};                // key -> {mag, reserve}
@@ -49,6 +50,9 @@ export class WeaponManager {
     this.reloadAnim = 0;
     this.equipAnim = 0;
     this.shells = [];
+    this.actionT = 0;     // slide/bolt reciprocation per shot (1 -> 0)
+    this.pumpT = 0;       // shotgun pump cycle progress (0..1)
+    this.breathT = 0;     // idle breathing phase
 
     // muzzle flash sprite
     this._flash = this._makeFlash();
@@ -199,7 +203,9 @@ export class WeaponManager {
     const side = rc.kickSide * Math.sin(this.recoilIndex * 0.9) * (0.5 + rise) + (Math.random() - 0.5) * rc.kickSide * 0.5;
     this.player.addRecoil(up, side);
     this.player.addShake(0.01 + up * 0.3);
-    this.kickBack = Math.min(0.09, this.kickBack + 0.045 + up);
+    this.kickBack = Math.min(0.12, this.kickBack + 0.06 + up);
+    this.actionT = 1;                                   // slide/bolt recip
+    if (w.type === 'shotgun') this.pumpT = 0.0001;      // begin pump rack
 
     // muzzle flash + light + sound + shell + noise
     this._muzzleFlash();
@@ -355,17 +361,22 @@ export class WeaponManager {
   /* ----------------------------- animation ----------------------------- */
 
   _animate(dt, speed01, airborne) {
-    const look = this.input; // use accumulated look indirectly via player recoil? use mouse via player
-    // sway from player angular velocity (approx via recoil + small noise)
     this.swayX = THREE.MathUtils.damp(this.swayX, 0, 8, dt);
     this.swayY = THREE.MathUtils.damp(this.swayY, 0, 8, dt);
-    this.kickBack = THREE.MathUtils.damp(this.kickBack, 0, 10, dt);
+    this.kickBack = THREE.MathUtils.damp(this.kickBack, 0, 14, dt);  // snappier recovery
     this.equipAnim = THREE.MathUtils.damp(this.equipAnim, 0, 6, dt);
+    this.actionT = THREE.MathUtils.damp(this.actionT, 0, 26, dt);
 
     // bob
     this.bobT += dt * (6 + speed01 * 8);
     const bobX = Math.cos(this.bobT) * 0.012 * speed01;
     const bobY = Math.abs(Math.sin(this.bobT)) * 0.012 * speed01;
+
+    // idle breathing (fades out as you move)
+    this.breathT += dt * 1.5;
+    const idle = 1 - Math.min(1, speed01 * 3);
+    const breatheY = Math.sin(this.breathT) * 0.006 * idle;
+    const breatheX = Math.cos(this.breathT * 0.7) * 0.004 * idle;
 
     // reload dip
     let reloadDipY = 0, reloadRot = 0;
@@ -380,23 +391,42 @@ export class WeaponManager {
     const equipY = -0.25 * this.equipAnim;
     const equipRot = 0.6 * this.equipAnim;
 
+    // ADS: pull the weapon toward the eye/centre
+    const ads = this.adsAmount;
+    const adsX = -VM_BASE.x * 0.85 * ads;
+    const adsY = (-VM_BASE.y - 0.04) * 0.5 * ads;
+    const adsZ = 0.1 * ads;
+
     const g = this.currentModel.group;
-    const tgtX = VM_BASE.x + bobX + this.swayX * 0.06;
-    const tgtY = VM_BASE.y + bobY + reloadDipY + equipY + this.swayY * 0.06;
-    const tgtZ = VM_BASE.z + this.kickBack;
+    const tgtX = VM_BASE.x + bobX + breatheX + this.swayX * 0.06 + adsX;
+    const tgtY = VM_BASE.y + bobY + breatheY + reloadDipY + equipY + this.swayY * 0.06 + adsY;
+    const tgtZ = VM_BASE.z + this.kickBack + adsZ;
     g.position.set(
       THREE.MathUtils.damp(g.position.x, tgtX, 18, dt),
       THREE.MathUtils.damp(g.position.y, tgtY, 18, dt),
       THREE.MathUtils.damp(g.position.z, tgtZ, 18, dt));
     g.rotation.set(
-      THREE.MathUtils.damp(g.rotation.x, reloadRot * 0.4 - this.kickBack * 2, 16, dt),
+      THREE.MathUtils.damp(g.rotation.x, reloadRot * 0.4 - this.kickBack * 2.4, 16, dt),
       THREE.MathUtils.damp(g.rotation.y, equipRot * 0.3 + reloadRot * 0.3, 16, dt),
-      THREE.MathUtils.damp(g.rotation.z, reloadRot, 16, dt));
+      THREE.MathUtils.damp(g.rotation.z, reloadRot - this.swayX * 0.04, 16, dt));
+
+    this._animateParts(dt);
+
     // keep flash glued to muzzle (vmScene is the root, so world == scene space)
     if (this._flash.visible) {
       g.updateMatrixWorld(true);
       this.currentModel.muzzle.getWorldPosition(this._flash.position);
     }
+  }
+
+  // Reciprocating slide / bolt / pump action on the current viewmodel.
+  _animateParts(dt) {
+    const p = this.currentModel.parts;
+    if (!p) return;
+    if (this.pumpT > 0) { this.pumpT += dt * 2.6; if (this.pumpT >= 1) this.pumpT = 0; }
+    if (p.slide) p.slide.position.z = p.slideZ + this.actionT * 0.05;     // pistol blowback
+    if (p.bolt) p.bolt.position.z = p.boltZ + this.actionT * 0.035;       // rifle/sniper bolt
+    if (p.pump) p.pump.position.z = p.pumpZ + Math.sin(this.pumpT * Math.PI) * 0.12; // shotgun rack
   }
 
   addLookSway(dx, dy) { this.swayX += -dx * 0.0006; this.swayY += dy * 0.0006; }
@@ -416,8 +446,11 @@ export class WeaponManager {
     const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.7, roughness: 0.4 });
     const wood = new THREE.MeshStandardMaterial({ color: 0x6b4524, metalness: 0.1, roughness: 0.8 });
     const accent = new THREE.MeshStandardMaterial({ color: w.view.accent, metalness: 0.5, roughness: 0.5 });
-    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.9, roughness: 0.3 });
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.92, roughness: 0.28, envMapIntensity: 1.1 });
     const muzzle = new THREE.Object3D();
+    const parts = {};
+    // give the viewmodel reflections from the world environment
+    [black, dark, accent].forEach(m => { m.envMapIntensity = 1.0; });
 
     const addBox = (x, y, z, sx, sy, sz, mat, rot = 0) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
@@ -430,19 +463,22 @@ export class WeaponManager {
       else if (axis === 'x') m.rotation.z = Math.PI / 2;
       g.add(m); return m;
     };
+    const sight = (z) => { addBox(0, 0.075, z, 0.012, 0.03, 0.02, steel); };
 
     switch (w.view.kind) {
       case 'knife': {
         addBox(0, 0, 0.05, 0.04, 0.12, 0.16, dark);           // handle
-        const blade = addBox(0, 0.02, -0.16, 0.012, 0.05, 0.28, steel);
-        blade.geometry.translate(0, 0, 0);
+        addBox(0, 0.02, -0.16, 0.012, 0.05, 0.28, steel);     // blade
+        addBox(0, 0.05, -0.1, 0.006, 0.02, 0.16, steel);      // edge bevel
         muzzle.position.set(0, 0.02, -0.32);
         break;
       }
       case 'pistol': {
         addBox(0, -0.02, 0, 0.05, 0.14, 0.1, dark);            // grip
-        addBox(0, 0.05, -0.12, 0.05, 0.06, 0.26, black);       // slide
+        parts.slide = addBox(0, 0.05, -0.12, 0.052, 0.062, 0.26, black); parts.slideZ = -0.12; // slide
         addBox(0, 0.02, -0.18, 0.03, 0.03, 0.12, steel);       // barrel
+        addBox(0, -0.08, 0.0, 0.04, 0.12, 0.04, dark);         // mag base
+        sight(-0.22); sight(-0.02);
         muzzle.position.set(0, 0.04, -0.26);
         break;
       }
@@ -452,6 +488,8 @@ export class WeaponManager {
         addBox(0, -0.04, 0.12, 0.045, 0.1, 0.08, dark);        // grip
         addBox(0, 0.02, 0.2, 0.04, 0.05, 0.14, dark);          // stock
         addCyl(0, 0.02, -0.26, 0.018, 0.018, 0.14, steel);     // barrel
+        parts.bolt = addBox(0.052, 0.04, -0.02, 0.018, 0.025, 0.08, steel); parts.boltZ = -0.02; // charging handle
+        sight(-0.2);
         muzzle.position.set(0, 0.02, -0.34);
         break;
       }
@@ -462,6 +500,9 @@ export class WeaponManager {
         const mag = addBox(0, -0.14, 0.0, 0.045, 0.2, 0.09, dark); mag.rotation.x = 0.5; // curved mag
         addBox(0, -0.05, 0.16, 0.045, 0.1, 0.08, wood);        // grip
         addBox(0, 0.0, 0.28, 0.05, 0.07, 0.2, wood);           // stock
+        parts.bolt = addBox(0.05, 0.045, -0.06, 0.02, 0.03, 0.07, steel); parts.boltZ = -0.06; // charging handle
+        addBox(0, 0.07, -0.42, 0.01, 0.03, 0.02, steel);       // front post
+        sight(0.0);
         muzzle.position.set(0, 0.02, -0.52);
         break;
       }
@@ -473,25 +514,29 @@ export class WeaponManager {
         addBox(0, -0.13, 0.02, 0.045, 0.18, 0.08, dark);       // mag
         addBox(0, -0.05, 0.16, 0.045, 0.1, 0.08, dark);        // grip
         addBox(0, 0.0, 0.3, 0.05, 0.08, 0.22, dark);           // stock
+        parts.bolt = addBox(0.05, 0.05, -0.02, 0.02, 0.025, 0.06, steel); parts.boltZ = -0.02; // forward assist/bolt
+        addBox(0, 0.09, -0.16, 0.02, 0.03, 0.05, dark);        // rear sight
         muzzle.position.set(0, 0.02, -0.6);
         break;
       }
       case 'sniper': {
         addBox(0, 0, 0.0, 0.05, 0.08, 0.5, accent);            // body
         addCyl(0, 0.02, -0.5, 0.018, 0.018, 0.4, steel);       // long barrel
-        addCyl(0, 0.12, -0.06, 0.035, 0.035, 0.22, black);     // scope tube (along z)
+        addCyl(0, 0.12, -0.06, 0.035, 0.035, 0.22, black);     // scope tube
         addCyl(0, 0.12, -0.18, 0.045, 0.045, 0.04, dark);      // scope lens
+        addCyl(0, 0.12, 0.06, 0.04, 0.04, 0.04, dark);         // scope eyepiece
         addBox(0, -0.05, 0.18, 0.045, 0.12, 0.1, accent);      // grip/cheek
         addBox(0, 0.0, 0.36, 0.05, 0.08, 0.24, accent);        // stock
+        parts.bolt = addBox(0.06, 0.04, 0.04, 0.02, 0.025, 0.1, steel); parts.boltZ = 0.04; // bolt handle
         muzzle.position.set(0, 0.02, -0.74);
         break;
       }
       case 'shotgun': {
         addBox(0, 0, -0.02, 0.055, 0.08, 0.46, wood);          // body
         addCyl(0, 0.03, -0.34, 0.022, 0.022, 0.34, dark);      // barrel
-        addCyl(0, -0.02, -0.3, 0.026, 0.026, 0.28, dark);      // pump/tube
-        addBox(0, -0.02, 0.06, 0.05, 0.09, 0.14, wood);        // pump grip
+        parts.pump = addCyl(0, -0.02, -0.3, 0.027, 0.027, 0.22, dark); parts.pumpZ = -0.3; // pump fore-end
         addBox(0, -0.01, 0.28, 0.05, 0.09, 0.22, wood);        // stock
+        sight(-0.34);
         muzzle.position.set(0, 0.03, -0.52);
         break;
       }
@@ -505,6 +550,6 @@ export class WeaponManager {
     g.position.copy(VM_BASE);
     g.visible = false;
     this.vmScene.add(g);
-    return { group: g, muzzle, key };
+    return { group: g, muzzle, parts, key };
   }
 }

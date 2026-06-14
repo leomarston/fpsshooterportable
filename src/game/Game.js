@@ -58,6 +58,9 @@ export class Game {
     await frame();
     this.nav = new Nav(this.world, this.mapInfo.bounds, 1.6);
 
+    // feed the radar the real map geometry
+    this.hud.setMap(this.world.boxes, this.mapInfo.bounds, this.mapInfo.sites);
+
     onProgress?.(0.8, 'Arming operators…');
     await frame();
 
@@ -141,6 +144,7 @@ export class Game {
     const diff = this._difficulty(this.round);
     this._spawnWave(diff);
 
+    this._roundStart = performance.now();
     this.hud.setRound(this.round);
     this.hud.setObjective(`Eliminate ${this.enemyMgr.aliveCount} hostiles`);
     this.hud.setEnemies(this.enemyMgr.aliveCount);
@@ -300,6 +304,14 @@ export class Game {
     return best;
   }
 
+  _zoneName(p) {
+    if (p.z < -40) return 'T SPAWN';
+    if (p.x > 15) return p.z > 24 ? 'BOMBSITE A' : 'LONG A';
+    if (p.x < -13) return p.z > 24 ? 'BOMBSITE B' : 'TUNNELS';
+    if (p.z > 30) return 'CT SPAWN';
+    return p.z > -2 ? 'MID' : 'T MID';
+  }
+
   _loadout(round) {
     let primary = 'smg';
     if (round >= 5) primary = 'm4x';
@@ -326,10 +338,12 @@ export class Game {
       // HUD
       this.hud.setHealth(this.player.health);
       this.hud.setArmor(this.player.armor);
+      this.hud.setTimer((performance.now() - (this._roundStart || performance.now())) / 1000);
       const fov = this.engine.camera.fov;
       this.hud.setCrosshair(this.weapons.inaccuracy, fov);
       this.hud.updateRadar(this.player, this.enemyMgr.enemies, this.mapInfo.sites);
       this.hud.setEnemies(this.enemyMgr.aliveCount);
+      this.hud.setLocation(this._zoneName(this.player.feet));
 
       // round end?
       if (this.enemyMgr.aliveCount === 0) {

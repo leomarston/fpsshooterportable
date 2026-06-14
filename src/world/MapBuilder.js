@@ -288,6 +288,161 @@ export class MapBuilder {
     return l;
   }
 
+  /* --------------------- architectural dressing --------------------- */
+
+  // Cornice cap + base skirting + protruding pilasters along a wall line,
+  // turning flat slabs into architecture that catches light.
+  _dressWallLine(axis, fixed, a, b, h = WALL_H) {
+    const plaster = this.forge.plaster(2);
+    const stone = this.forge.sandstone(1);
+    const len = Math.abs(b - a), mid = (a + b) / 2;
+    if (axis === 'x') {
+      this.deco(mid, h - 0.12, fixed, len, 0.55, 1.6, plaster, { cast: false });   // cornice
+      this.deco(mid, h - 0.5, fixed, len, 0.16, 1.75, stone, { cast: false });      // shadow reveal
+      this.deco(mid, 0.4, fixed, len, 0.8, 1.55, plaster, { cast: false });         // base skirt
+    } else {
+      this.deco(fixed, h - 0.12, mid, 1.6, 0.55, len, plaster, { cast: false });
+      this.deco(fixed, h - 0.5, mid, 1.75, 0.16, len, stone, { cast: false });
+      this.deco(fixed, 0.4, mid, 1.55, 0.8, len, plaster, { cast: false });
+    }
+    const step = 9, n = Math.floor(len / step);
+    for (let i = 1; i < n; i++) {
+      const t = a + (i * len) / n;
+      if (axis === 'x') this.deco(t, (h - 0.7) / 2 + 0.4, fixed, 1.1, h - 1.0, 1.85, stone);
+      else this.deco(fixed, (h - 0.7) / 2 + 0.4, t, 1.85, h - 1.0, 1.1, stone);
+    }
+  }
+
+  // Wall sconce: bracket + glowing bulb + warm point light (bloom-lit).
+  lamp(x, y, z, color = 0xffc878) {
+    this.deco(x, y + 0.1, z, 0.14, 0.5, 0.14, this.forge.metalDark(), { cast: false });
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10),
+      new THREE.MeshStandardMaterial({ color: 0xfff2cf, emissive: color, emissiveIntensity: 2.6, roughness: 0.4 }));
+    bulb.position.set(x, y - 0.12, z); this.group.add(bulb);
+    this.pointLight(x, y - 0.05, z, color, 5.5, 13);
+  }
+
+  // Low-poly flat-shaded foliage clump.
+  bush(x, z, scale = 1) {
+    const base = this.world.groundHeight(x, z, 30);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x536e2f, roughness: 0.95, flatShading: true });
+    const g = new THREE.Group();
+    for (let i = 0; i < 6; i++) {
+      const s = (0.35 + Math.random() * 0.45) * scale;
+      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 1), mat);
+      blob.position.set((Math.random() - 0.5) * 0.9 * scale, s * 0.7 + Math.random() * 0.2, (Math.random() - 0.5) * 0.9 * scale);
+      blob.castShadow = blob.receiveShadow = true; g.add(blob);
+    }
+    g.position.set(x, base, z); this.group.add(g);
+  }
+
+  // Drooping power/comm cable between two points (catenary).
+  cable(a, b, sag = 1.3) {
+    const mid = a.clone().add(b).multiplyScalar(0.5); mid.y -= sag;
+    const curve = new THREE.CatmullRomCurve3([a, mid, b]);
+    const geo = new THREE.TubeGeometry(curve, 18, 0.03, 6, false);
+    const m = new THREE.Mesh(geo, this.forge.flat(0x14130f, 0.85));
+    m.castShadow = true; this.group.add(m);
+  }
+
+  // Metal military ammo crate.
+  ammoCrate(x, z, rotY = null) {
+    const base = this.world.groundHeight(x, z, 30);
+    const r = rotY ?? (Math.random() - 0.5) * 0.5;
+    const w = 1.5, h = 0.95, d = 0.85;
+    const m = new THREE.Mesh(roundedBox(w, h, d, 0.06), this.forge.metalGreen());
+    m.position.set(x, base + h / 2, z); m.rotation.y = r; m.castShadow = m.receiveShadow = true; this.group.add(m);
+    const lid = new THREE.Mesh(roundedBox(w * 1.04, 0.14, d * 1.04, 0.04), this.forge.metalDark());
+    lid.position.set(x, base + h - 0.02, z); lid.rotation.y = r; lid.castShadow = true; this.group.add(lid);
+    for (const s of [-1, 1]) {
+      const latch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.18, 0.06), this.forge.metalDark());
+      latch.position.set(x + Math.cos(r) * s * w * 0.42, base + h * 0.55, z + Math.sin(r) * s * w * 0.42);
+      latch.rotation.y = r; this.group.add(latch);
+    }
+    this.world.add(Box.fromCenter(x, base + h / 2, z, w, h, d, 'metal', true, true));
+  }
+
+  // Scattered rubble / broken stones.
+  rubble(x, z, n = 7) {
+    const base = this.world.groundHeight(x, z, 30);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8a8174, roughness: 0.95, flatShading: true });
+    for (let i = 0; i < n; i++) {
+      const s = 0.14 + Math.random() * 0.34;
+      const r = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), mat);
+      r.position.set(x + (Math.random() - 0.5) * 2.4, base + s * 0.45, z + (Math.random() - 0.5) * 2.4);
+      r.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      r.castShadow = r.receiveShadow = true; this.group.add(r);
+    }
+  }
+
+  // Wooden scaffold against a wall (poles + planks).
+  scaffold(x, z, rotY = 0) {
+    const base = this.world.groundHeight(x, z, 30);
+    const wood = this.forge.wood(1);
+    const g = new THREE.Group();
+    for (const dx of [-1.1, 1.1]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 4.2, 8), wood);
+      pole.position.set(dx, 2.1, 0); pole.castShadow = true; g.add(pole);
+    }
+    for (const yy of [1.3, 2.7, 3.9]) {
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.55), wood);
+      plank.position.set(0, yy, 0); plank.castShadow = true; g.add(plank);
+    }
+    g.position.set(x, base, z); g.rotation.y = rotY; this.group.add(g);
+  }
+
+  _scatterRocks(count = 36) {
+    const mat = new THREE.MeshStandardMaterial({ color: 0x877e70, roughness: 0.96, flatShading: true });
+    for (let i = 0; i < count; i++) {
+      const x = this.X0 + 2 + Math.random() * (this.X1 - this.X0 - 4);
+      const z = this.Z0 + 2 + Math.random() * (this.Z1 - this.Z0 - 4);
+      const gy = this.world.groundHeight(x, z, 30);
+      if (gy > 0.4) continue;
+      if (!this.world.isFree(new THREE.Vector3(x, gy + 0.05, z), 0.3, 0.9)) continue;
+      const s = 0.1 + Math.random() * 0.22;
+      const r = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), mat);
+      r.position.set(x, gy + s * 0.4, z);
+      r.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      r.castShadow = true; this.group.add(r);
+    }
+  }
+
+  _dress() {
+    const { X0, X1, Z0, Z1, DIV_A, DIV_B } = this;
+    // architecture on every major wall
+    this._dressWallLine('x', Z0, X0, X1, WALL_H + 1.5);
+    this._dressWallLine('x', Z1, X0, X1, WALL_H + 1.5);
+    this._dressWallLine('z', X0, Z0, Z1, WALL_H + 1.5);
+    this._dressWallLine('z', X1, Z0, Z1, WALL_H + 1.5);
+    this._dressWallLine('z', DIV_A, -42, 44);
+    this._dressWallLine('z', DIV_B, -42, 44);
+
+    // lamps for atmosphere (warm pools + bloom)
+    for (const [x, z] of [[X0 + 0.7, -18], [X0 + 0.7, 22], [X1 - 0.7, -18], [X1 - 0.7, 22],
+                          [-3, Z0 + 0.7], [3, Z1 - 0.7], [DIV_A - 0.7, 8], [DIV_B + 0.7, 8]]) {
+      this.lamp(x, 4.3, z);
+    }
+    this.lamp(DIV_A - 0.7, 4.3, 34); this.lamp(DIV_B + 0.7, 4.3, 34);
+
+    // vegetation
+    for (const [x, z] of [[-38, -49], [38, -49], [-40, 8], [40, 8], [13, 47], [-12, 47], [-39, 44], [39, -8]]) {
+      this.bush(x, z, 0.9 + Math.random() * 0.7);
+    }
+    this._palm(-37, 16); this._palm(37, 14); this._palm(-7, -47); this._palm(7, 47);
+
+    // hanging cables across the lanes
+    this.cable(new THREE.Vector3(DIV_B, 5.2, -22), new THREE.Vector3(DIV_A, 5.0, -22));
+    this.cable(new THREE.Vector3(DIV_B, 5.0, 12), new THREE.Vector3(DIV_A, 5.2, 12));
+    this.cable(new THREE.Vector3(X0 + 1, 5.4, -30), new THREE.Vector3(DIV_B, 5.0, -30));
+    this.cable(new THREE.Vector3(DIV_A, 5.0, -30), new THREE.Vector3(X1 - 1, 5.4, -30));
+
+    // props at the sites + chokes
+    this.ammoCrate(31, 33); this.ammoCrate(-24, 41); this.ammoCrate(34, -24);
+    this.rubble(20, -12); this.rubble(-34, -18); this.rubble(36, 42); this.rubble(-20, 44);
+    this.scaffold(40.5, -2, Math.PI / 2); this.scaffold(-40.5, 4, -Math.PI / 2);
+    this._scatterRocks();
+  }
+
   /* ===================================================================
      BUILD
      =================================================================== */
@@ -331,6 +486,7 @@ export class MapBuilder {
     const DIV_B = -13;  // divider between mid and B lane
     const DIV_Z_TOP = -42;
     const DIV_Z_BOT = 44;
+    this.DIV_A = DIV_A; this.DIV_B = DIV_B;
 
     // ---- lane divider walls ----
     // Divider B (x=-13): gaps = mid<->lower-tunnels (z -3..1), CT<->B (z 33..39)
@@ -366,6 +522,9 @@ export class MapBuilder {
     this._aLane(DIV_A);
     // ---- TUNNELS + B SITE ----
     this._bLane(DIV_B);
+
+    // ---- architectural dressing + atmosphere ----
+    this._dress();
 
     // bombsite center markers + ambient site lights
     this.sites.A = { center: new THREE.Vector3(29, 0, 36), radius: 9 };

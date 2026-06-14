@@ -47,49 +47,64 @@
       <div class="scope-mask scope-right"></div>
     </div>
 
-    <!-- Top: round / objective banner -->
+    <!-- Top-center: scores + round timer (CS:GO-style) -->
     <div id="top-bar">
-      <div id="round-pill"><span id="round-label">ROUND</span><span id="round-num">1</span></div>
-      <div id="objective">Eliminate all hostiles</div>
-      <div id="enemy-counter"><span class="ec-icon"></span><span id="enemies-left">0</span></div>
+      <div class="score-side ct">
+        <span class="score-num" id="score-ct">0</span>
+        <span class="score-lbl">KILLS</span>
+      </div>
+      <div class="timer-wrap">
+        <div id="round-timer">0:00</div>
+        <div id="round-phase">ROUND <b id="round-num">1</b></div>
+      </div>
+      <div class="score-side t">
+        <span class="score-num" id="score-t">0</span>
+        <span class="score-lbl">HOSTILES</span>
+      </div>
     </div>
 
-    <!-- Kill feed -->
+    <!-- Kill feed (top-right) -->
     <div id="killfeed"></div>
 
-    <!-- Bottom-left: health + armor -->
+    <!-- Radar / minimap (top-left) + money-style stat box below -->
+    <div id="radar">
+      <canvas id="radar-canvas" width="300" height="300"></canvas>
+      <div class="radar-frame"></div>
+      <div class="radar-label" id="radar-loc">DUST</div>
+    </div>
+    <div id="money-box">
+      <div class="money-row"><span class="money-sym">$</span><span id="money-val">0</span></div>
+      <div class="money-sub">STREAK <b id="streak-val">0</b></div>
+    </div>
+
+    <!-- Bottom-left: health + armor (CS:GO-style) -->
     <div id="vitals">
       <div class="vital health">
-        <svg viewBox="0 0 24 24" class="vital-ico"><path d="M12 21s-7-4.6-9.3-9.2C1 8.6 2.6 5 6 5c2 0 3.2 1.2 4 2.4C10.8 6.2 12 5 14 5c3.4 0 5 3.6 3.3 6.8C19 16.4 12 21 12 21z"/></svg>
-        <span id="health-val">100</span>
+        <svg viewBox="0 0 24 24" class="vital-ico"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg>
+        <div class="vital-stack">
+          <span id="health-val">100</span>
+          <div class="vbar"><i id="health-bar"></i></div>
+        </div>
       </div>
       <div class="vital armor">
         <svg viewBox="0 0 24 24" class="vital-ico"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5l8-3z"/></svg>
-        <span id="armor-val">100</span>
+        <div class="vital-stack">
+          <span id="armor-val">100</span>
+          <div class="vbar"><i id="armor-bar"></i></div>
+        </div>
       </div>
     </div>
 
-    <!-- Bottom-right: ammo + weapon -->
+    <!-- Bottom-right: ammo + weapon (CS:GO-style) -->
     <div id="ammo-block">
       <div id="weapon-name">AK-47</div>
       <div id="ammo-counts">
         <span id="ammo-mag">30</span><span class="ammo-div">/</span><span id="ammo-reserve">90</span>
+        <svg class="ammo-ico" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="13" rx="2.5"/><rect x="9.5" y="16" width="5" height="5"/></svg>
       </div>
+      <div id="ammo-ticks"></div>
       <div id="reload-hint" class="hidden">PRESS <b>R</b> TO RELOAD</div>
       <div id="weapon-slots"></div>
-    </div>
-
-    <!-- Bottom-center: score / kills -->
-    <div id="scoreboard-mini">
-      <div class="sm-item"><span class="sm-k" id="kills-val">0</span><span class="sm-l">KILLS</span></div>
-      <div class="sm-item"><span class="sm-k" id="score-val">0</span><span class="sm-l">SCORE</span></div>
-      <div class="sm-item"><span class="sm-k" id="streak-val">0</span><span class="sm-l">STREAK</span></div>
-    </div>
-
-    <!-- Minimap / radar -->
-    <div id="radar">
-      <canvas id="radar-canvas" width="220" height="220"></canvas>
-      <div class="radar-ring"></div>
     </div>
 
     <!-- Center announcements (round start / win / lose) -->
