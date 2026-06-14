@@ -53,7 +53,7 @@ try {
       g.hud.setLocation(g._zoneName(g.player.feet));
     }, s);
     // let GTAO/temporal settle
-    for (let i = 0; i < 6; i++) { await new Promise(r => setTimeout(r, 60)); await page.evaluate(() => window.__engine.render()); }
+    for (let i = 0; i < 4; i++) { await new Promise(r => setTimeout(r, 50)); await page.evaluate(() => window.__engine.render()); }
     await page.screenshot({ path: `tools/shot_${s.name}.png` });
     console.log('  shot:', s.name);
   }
