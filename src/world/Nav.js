@@ -20,7 +20,7 @@ export class Nav {
     this.nodes = new Array(this.cols * this.rows);
     this.radius = 0.42;
     this.height = 1.7;
-    this.stepUp = 0.75;
+    this.stepUp = 0.6;   // matches the player/bot physics step-up height
     this._build();
   }
 

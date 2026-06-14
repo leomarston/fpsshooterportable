@@ -71,46 +71,71 @@ export class CollisionWorld {
    */
   moveAABB(feet, radius, height, disp) {
     const half = radius;
-    let onGround = false, surface = 'sand', ceiling = false;
-    // Build current AABB from feet.
-    const aabb = {
-      min: new THREE.Vector3(feet.x - half, feet.y, feet.z - half),
-      max: new THREE.Vector3(feet.x + half, feet.y + height, feet.z + half),
-    };
+    const STEP = 0.6;   // auto step-up height (stairs / low ledges)
 
+    // candidate boxes over the whole swept region (inflated for the step-up try)
     const region = {
-      min: new THREE.Vector3(Math.min(aabb.min.x + disp.x, aabb.min.x), Math.min(aabb.min.y + disp.y, aabb.min.y), Math.min(aabb.min.z + disp.z, aabb.min.z)),
-      max: new THREE.Vector3(Math.max(aabb.max.x + disp.x, aabb.max.x), Math.max(aabb.max.y + disp.y, aabb.max.y), Math.max(aabb.max.z + disp.z, aabb.max.z)),
+      min: new THREE.Vector3(
+        Math.min(feet.x - half + disp.x, feet.x - half),
+        Math.min(feet.y + disp.y, feet.y),
+        Math.min(feet.z - half + disp.z, feet.z - half)),
+      max: new THREE.Vector3(
+        Math.max(feet.x + half + disp.x, feet.x + half),
+        Math.max(feet.y + height + disp.y, feet.y + height) + STEP,
+        Math.max(feet.z + half + disp.z, feet.z + half)),
     };
-    region.min.subScalar(0.1); region.max.addScalar(0.1);
+    region.min.subScalar(0.2); region.max.addScalar(0.2);
     const cand = this._candidates(region.min, region.max).map(i => this.boxes[i]).filter(b => b.solid);
 
+    // normal move
+    const r1 = this._sweep(feet.x, feet.y, feet.z, half, height, disp.x, disp.y, disp.z, cand);
+
+    // If horizontal progress was blocked while grounded (and not jumping),
+    // try a step-up: lift by STEP, move horizontally, settle back down.
+    const wantH = Math.hypot(disp.x, disp.z);
+    const gotH = Math.hypot(r1.x - feet.x, r1.z - feet.z);
+    if (wantH > 1e-4 && gotH < wantH - 1e-3 && disp.y <= 0.02) {
+      const up = this._sweep(feet.x, feet.y, feet.z, half, height, 0, STEP, 0, cand);
+      const fwd = this._sweep(up.x, up.y, up.z, half, height, disp.x, 0, disp.z, cand);
+      const down = this._sweep(fwd.x, fwd.y, fwd.z, half, height, 0, -(STEP + 0.05), 0, cand);
+      const stepH = Math.hypot(down.x - feet.x, down.z - feet.z);
+      if (down.onGround && stepH > gotH + 1e-3) {
+        feet.set(down.x, down.y, down.z);
+        return { onGround: true, surface: down.surface, ceiling: r1.ceiling };
+      }
+    }
+
+    feet.set(r1.x, r1.y, r1.z);
+    return { onGround: r1.onGround, surface: r1.surface, ceiling: r1.ceiling };
+  }
+
+  // Per-axis, substepped AABB sweep from a feet position. Pure (no mutation
+  // of feet); returns the resolved feet position + contact flags.
+  _sweep(fx, fy, fz, half, height, dx, dy, dz, cand) {
+    let onGround = false, surface = 'sand', ceiling = false;
+    const aabb = {
+      min: new THREE.Vector3(fx - half, fy, fz - half),
+      max: new THREE.Vector3(fx + half, fy + height, fz + half),
+    };
     const overlap = (a, b) =>
       a.min.x < b.max.x && a.max.x > b.min.x &&
       a.min.y < b.max.y && a.max.y > b.min.y &&
       a.min.z < b.max.z && a.max.z > b.min.z;
-
-    // Substep so fast moves can't tunnel through thin walls/crates.
-    const maxComp = Math.max(Math.abs(disp.x), Math.abs(disp.y), Math.abs(disp.z));
-    const steps = Math.max(1, Math.ceil(maxComp / 0.4));
-    const sx = disp.x / steps, sy = disp.y / steps, sz = disp.z / steps;
-
+    const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) / 0.4));
+    const sx = dx / steps, sy = dy / steps, sz = dz / steps;
     for (let s = 0; s < steps; s++) {
-      // X axis
       aabb.min.x += sx; aabb.max.x += sx;
       for (const b of cand) {
         if (!overlap(aabb, b)) continue;
         if (sx > 0) { const d = b.min.x - aabb.max.x; aabb.min.x += d; aabb.max.x += d; }
         else if (sx < 0) { const d = b.max.x - aabb.min.x; aabb.min.x += d; aabb.max.x += d; }
       }
-      // Z axis
       aabb.min.z += sz; aabb.max.z += sz;
       for (const b of cand) {
         if (!overlap(aabb, b)) continue;
         if (sz > 0) { const d = b.min.z - aabb.max.z; aabb.min.z += d; aabb.max.z += d; }
         else if (sz < 0) { const d = b.max.z - aabb.min.z; aabb.min.z += d; aabb.max.z += d; }
       }
-      // Y axis
       aabb.min.y += sy; aabb.max.y += sy;
       for (const b of cand) {
         if (!overlap(aabb, b)) continue;
@@ -118,9 +143,7 @@ export class CollisionWorld {
         else { const d = b.min.y - aabb.max.y; aabb.min.y += d; aabb.max.y += d; ceiling = true; }
       }
     }
-
-    feet.set(aabb.min.x + half, aabb.min.y, aabb.min.z + half);
-    return { onGround, surface, ceiling };
+    return { x: aabb.min.x + half, y: aabb.min.y, z: aabb.min.z + half, onGround, surface, ceiling };
   }
 
   // Is an AABB at this feet position free of overlaps? (for spawn checks)

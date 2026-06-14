@@ -60,5 +60,24 @@ const nav2 = new Nav(wall2, { x0: -20, x1: 20, z0: -20, z1: 20 }, 1.6);
 const p2 = nav2.findPath(new THREE.Vector3(0, 0, 0), new THREE.Vector3(10, 0, 10));
 ok(p2 && p2.length >= 1, 'open-field path works');
 
+// --- step-up physics: a 0.5 ledge is climbed, a 1.0 wall is not ---
+function walkInto(stepHeight) {
+  const w3 = new CollisionWorld();
+  w3.add(Box.fromCenter(20, -1, 0, 120, 2, 40, 'sand'));         // big ground
+  w3.add(Box.fromCenter(31, stepHeight / 2, 0, 58, stepHeight, 20, 'concrete')); // long ledge/plateau at x>=2
+  const feet = new THREE.Vector3(0, 0, 0);
+  let vy = 0;
+  for (let i = 0; i < 100; i++) {                                // ~14 units of walking
+    vy -= 20 * (1 / 60);
+    const r = w3.moveAABB(feet, 0.42, 1.78, new THREE.Vector3(0.12, vy * (1 / 60), 0));
+    if (r.onGround) vy = 0;
+  }
+  return feet;
+}
+const climbed = walkInto(0.5);
+ok(climbed.x > 4 && climbed.y > 0.45, 'player steps up onto a 0.5 ledge (x=' + climbed.x.toFixed(1) + ' y=' + climbed.y.toFixed(2) + ')');
+const blocked = walkInto(1.0);
+ok(blocked.x < 2.4 && blocked.y < 0.1, 'player is blocked by a 1.0 wall (x=' + blocked.x.toFixed(1) + ' y=' + blocked.y.toFixed(2) + ')');
+
 console.log(`\n  logic tests: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

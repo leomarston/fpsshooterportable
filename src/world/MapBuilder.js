@@ -182,6 +182,53 @@ export class MapBuilder {
     }
   }
 
+  // Shipping container — the iconic "blue" cover in Long.
+  shippingContainer(cx, cz, w, h, d, mat, rotY = 0) {
+    const base = this.world.groundHeight(cx, cz, 30);
+    const body = new THREE.Mesh(roundedBox(w, h, d, 0.06), mat);
+    body.position.set(cx, base + h / 2, cz); body.rotation.y = rotY; body.castShadow = body.receiveShadow = true; this.group.add(body);
+    const ridge = this.forge.metalDark();
+    const n = Math.floor(w / 0.5);
+    for (let i = 1; i < n; i++) {
+      const lx = -w / 2 + i * (w / n);
+      for (const sz of [-d / 2 - 0.01, d / 2 + 0.01]) {
+        const r = new THREE.Mesh(new THREE.BoxGeometry(0.05, h * 0.86, 0.06), ridge);
+        r.position.set(cx + Math.cos(rotY) * lx - Math.sin(rotY) * sz, base + h / 2, cz + Math.sin(rotY) * lx + Math.cos(rotY) * sz);
+        r.rotation.y = rotY; this.group.add(r);
+      }
+    }
+    const aw = Math.abs(Math.cos(rotY)) * w + Math.abs(Math.sin(rotY)) * d;
+    const ad = Math.abs(Math.sin(rotY)) * w + Math.abs(Math.cos(rotY)) * d;
+    this.world.add(Box.fromCenter(cx, base + h / 2, cz, aw, h, ad, 'metal', true, true));
+    return base + h;
+  }
+
+  // Wall with a window opening (sill + header) — the "B window" vision gap.
+  windowWall(axis, fixed, a, b, opts = {}) {
+    const sill = opts.sill ?? 1.0, head = opts.head ?? 2.6, h = opts.h ?? WALL_H;
+    const mat = opts.mat || this.forge.sandstone(2), surface = opts.surface || 'concrete', t = T;
+    const len = Math.abs(b - a), mid = (a + b) / 2;
+    if (axis === 'x') {
+      this.box(mid, sill / 2, fixed, len, sill, t, mat, { surface });
+      this.box(mid, head + (h - head) / 2, fixed, len, h - head, t, mat, { surface });
+      this.deco(mid, sill + 0.05, fixed, len, 0.1, t + 0.2, this.forge.wood(1), { cast: false });
+      this.deco(mid, head - 0.05, fixed, len, 0.1, t + 0.2, this.forge.wood(1), { cast: false });
+    } else {
+      this.box(fixed, sill / 2, mid, t, sill, len, mat, { surface });
+      this.box(fixed, head + (h - head) / 2, mid, t, h - head, len, mat, { surface });
+      this.deco(fixed, sill + 0.05, mid, t + 0.2, 0.1, len, this.forge.wood(1), { cast: false });
+      this.deco(fixed, head - 0.05, mid, t + 0.2, 0.1, len, this.forge.wood(1), { cast: false });
+    }
+  }
+
+  // Low chest/head-glance wall (the Pit lip).
+  lowWall(axis, fixed, a, b, h = 1.1, mat = null) {
+    mat = mat || this.forge.sandstone(1);
+    const len = Math.abs(b - a), mid = (a + b) / 2;
+    if (axis === 'x') this.box(mid, h / 2, fixed, len, h, T + 0.2, mat, { surface: 'concrete' });
+    else this.box(fixed, h / 2, mid, T + 0.2, h, len, mat, { surface: 'concrete' });
+  }
+
   platform(cx, cz, w, d, height, mat = null, surface = 'concrete') {
     this.box(cx, height / 2, cz, w, height, d, mat || this.forge.concrete(2), { surface });
     return height;
@@ -339,7 +386,9 @@ export class MapBuilder {
     this.fill(54, X.x1, Z.n, Z.m);            // east wall of pit
     this.fill(X.g, X.x1, Z.m, Z.z1);          // X8 Z4-Z5
     // West-central building (between tunnels/B and mid)
-    this.fill(X.b, X.c, Z.t, 24);             // X3 Z2-Z3 + north of B-doors
+    // West-central building with the MID-TO-B CONNECTOR gap (Z 8..13)
+    this.fill(X.b, X.c, Z.t, 8);              // X3 Z2..(Z=8)
+    this.fill(X.b, X.c, 13, 24);              // X3 (Z=13)..north of B-doors
     this.fill(X.b, -12, Z.s, Z.z1);           // X3 south sliver (west of CT spawn)
     // East-central building (between mid/catwalk and long, T side)
     this.fill(X.d, X.f, Z.t, Z.n);            // X5-X6 Z2 (T mid<->long)
@@ -386,48 +435,54 @@ export class MapBuilder {
   }
 
   _longAndA() {
-    // Long A corridor cover (X7 Z2-Z3)
-    this.crate(31, -34, 2.2); this.crate(33, -31, 1.8);
-    this.barrel(41, -20, 'rust'); this.barrel(40, -19, 'red');
-    this.sandbags(30, -2, 5, Math.PI / 2);
-    // Pit (X8 Z3) — a CT hold cubby east of long, opening to long
+    // --- LONG A corridor (X7): the "blue" container, the car, the corner ---
+    this.shippingContainer(33, -6, 2.6, 2.6, 6, this.forge.metalBlue(), 0);   // "blue"
+    this.car(40, -20, Math.PI / 2);                              // car on the right of long
+    this.crate(31, -36, 2.0); this.barrel(41, -32, 'rust');
+    this.sandbags(30, -1, 5, Math.PI / 2);                       // long corner
+    // --- PIT (X8 Z3): CT head-glance nook holding long ---
     this.platform(49, 9, 10, 14, 0.5, this.forge.concrete(2));   // slightly raised pit floor
-    this.steps(44.5, 9, 1, 1, 0.5, 1.0, 14);                     // lip up from long into pit (nav-climbable)
-    this.crate(50, 4, 2);
+    this.steps(44.5, 9, 1, 1, 0.5, 1.0, 14);                     // lip up from long into pit
+    this.lowWall('x', 2.0, 45, 53.5, 1.3);                       // pit head-glance lip toward doors
+    this.crate(50, 4, 1.6);
     this.archway(X.g, 9, 8, false);                              // long<->pit mouth
+    this.pointLight(49, 4, 8, 0xffe0b0, 4, 14);
 
-    // A SITE (X[8,44] Z[16,38])
-    // goose / A platform (raised) at NW of site
-    this.platform(20, 22, 10, 9, 1.4, this.forge.concrete(2));
-    this.steps(25.5, 22, 1, 3, 0.5, 0.7, 9);                     // ramp up onto goose (from site centre)
-    // default crates (plant spots)
-    this.crate(30, 26, 2.4); this.crate(32, 24, 2.0); this.crateStack(36, 30);
-    this.barrel(27, 33, 'red'); this.barrel(38, 22, 'blue');
-    this.ammoCrate(33, 33);
-    // CT ramp into A (south edge shared with CT spawn at X[16,28] Z=s) — a short step up
+    // --- A SITE (X[8,44] Z[16,38]) ---
+    // the "goose" platform (raised cover, NW of site)
+    this.platform(19, 21, 9, 8, 1.2, this.forge.concrete(2));
+    this.steps(24, 21, 1, 3, 0.4, 0.8, 8);                       // ramp onto goose
+    // the canonical default-plant cover: 3 crates (two short-side, one ramp-side)
+    this.crate(22, 26, 2.0);                                     // short-side crate 1
+    this.crate(24, 28, 2.0);                                     // short-side crate 2
+    this.crate(34, 30, 2.0);                                     // ramp-side crate
+    this.barrel(30, 33, 'red'); this.ammoCrate(31, 22);
+    // CT ramp into A (shared south edge with CT spawn, X[16,28])
     this.steps(22, Z.s - 0.5, -2, 1, 0.5, 1.0, 12);
     this.tarp(X.g - 1, 4.5, 26, 6, 3, 0xb89a55, Math.PI / 2);
-    this.pointLight(30, 4.5, 26, 0xffdca0, 7, 26);
+    this.pointLight(30, 4.5, 28, 0xffdca0, 7, 26);
   }
 
   _tunnelsAndB() {
-    // Upper/Lower tunnels (X2): a mid pillar to suggest upper/lower split
-    this.crate(-40, -40, 2); this.crate(-38, -37, 1.6);
-    this.deco(-34, 3, -22, 1.6, 6, 6, this.forge.sandstone(1)); // tunnel pillar
-    this.barrel(-28, -6, 'rust');
-    this.archway(X.b, 10, 7, false);   // tunnels/B doors region
+    // --- UPPER/LOWER TUNNELS (X2): pillar + "dog" corner cover at the B mouth ---
+    this.crate(-40, -42, 2); this.crate(-38, -39, 1.6);
+    this.deco(-30, 3, -20, 1.4, 6, 5, this.forge.sandstone(1)); // tunnel pillar
+    this.barrel(-29, -4, 'rust');
+    this.crate(-27, 11, 1.8);                                   // "dog" corner cover
 
-    // B SITE (X[-56,-24] Z[16,38])
-    this.car(-37, 24, 0);              // the car
-    this.crate(-28, 20, 2.2); this.crate(-30, 22, 1.8); this.crateStack(-46, 28);
-    this.barrel(-26, 30, 'blue'); this.barrel(-25, 32, 'red');
-    this.ammoCrate(-31, 31);
-    // back-plat (raised platform at the back/west of B)
-    this.platform(-51, 22, 8, 14, 1.2, this.forge.concrete(2));
-    this.steps(-47.5, 22, 1, 2, 0.6, 0.8, 14);  // ramp up to back-plat from site
-    this.sandbags(-33, 16.5, 5, 0);
-    // B doors (CT -> B) opening in the X3 building at Z[24,38] is already open;
-    this.archway(-13, 30, 6, false);
+    // --- B SITE (X[-56,-24] Z[16,38]): car + crates + back-plat + window ---
+    this.car(-37, 24, 0);                                       // the car
+    this.crate(-30, 20, 2.0); this.crate(-32, 22, 1.8); this.crateStack(-45, 30);
+    this.barrel(-27, 29, 'blue'); this.ammoCrate(-31, 31);
+    // back-plat (raised) with a B window overlooking the site
+    this.platform(-51, 23, 8, 14, 1.2, this.forge.concrete(2));
+    this.steps(-47.5, 27, 1, 2, 0.6, 0.9, 6);                   // up to back-plat (south side)
+    this.windowWall('z', -47, 16, 21, { sill: 1.4, head: 3.0, h: 4.2 });  // B window (north front)
+    this.sandbags(-34, 16.8, 5, 0);
+    // B doors (double doors into B from the CT-side connector)
+    this.archway(X.b, 30, 6, false);
+    this.deco(X.b, DOOR_H / 2, 28.6, 0.16, DOOR_H, 1.6, this.forge.metalBlue());
+    this.deco(X.b, DOOR_H / 2, 31.4, 0.16, DOOR_H, 1.6, this.forge.metalBlue());
     this.tarp(X.x0 + 1, 4.5, 24, 6, 3, 0x35506e, Math.PI / 2);
     this.pointLight(-37, 4.5, 24, 0xffdca0, 7, 26);
   }
