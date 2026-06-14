@@ -5,7 +5,7 @@
  */
 import { Engine } from './core/Engine.js';
 import { Input } from './core/Input.js';
-import { GamepadInput } from './core/GamepadInput.js';
+import { KeyboardInput2 } from './core/KeyboardInput2.js';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { HUD } from './ui/HUD.js';
 import { Menus } from './ui/Menus.js';
@@ -19,9 +19,9 @@ const engine = new Engine(canvas, menus.settings.quality);
 const game = new Game(engine, audio);
 game.menus = menus;
 
-// Player 1 = keyboard + mouse, Player 2 = gamepad.
+// Both players share one keyboard. P1 = WASD + mouse, P2 = IJKL + arrows.
 const input1 = new Input(canvas);
-const gamepad2 = new GamepadInput(0);
+const input2 = new KeyboardInput2();
 const $ = (id) => document.getElementById(id);
 const hud1 = new HUD($('hudv-1'), { accent: '#39ff8e', label: 'P1' });
 const hud2 = new HUD($('hudv-2'), { accent: '#4ad6ff', label: 'P2' });
@@ -29,13 +29,13 @@ const buy1 = new BuyMenu(audio, $('buyv-1'));
 const buy2 = new BuyMenu(audio, $('buyv-2'));
 game.configureSlots([
   { input: input1, camera: engine.camera, hud: hud1, buyMenu: buy1, name: 'PLAYER 1', color: 0x39ff8e },
-  { input: gamepad2, camera: engine.camera2, hud: hud2, buyMenu: buy2, name: 'PLAYER 2', color: 0x4ad6ff },
+  { input: input2, camera: engine.camera2, hud: hud2, buyMenu: buy2, name: 'PLAYER 2', color: 0x4ad6ff },
 ]);
 
 input1.sensitivity = menus.settings.sensitivity;
 input1.invertY = menus.settings.invertY;
-gamepad2.sensitivity = menus.settings.sensitivity;
-gamepad2.invertY = menus.settings.invertY;
+input2.sensitivity = menus.settings.sensitivity;
+input2.invertY = menus.settings.invertY;
 audio.masterVolume = menus.settings.volume / 100;
 engine.setFov(menus.settings.fov);
 
@@ -53,7 +53,7 @@ function applyLayout(n) {
 
 function applySettings(s, key) {
   input1.sensitivity = s.sensitivity; input1.invertY = s.invertY;
-  gamepad2.sensitivity = s.sensitivity; gamepad2.invertY = s.invertY;
+  input2.sensitivity = s.sensitivity; input2.invertY = s.invertY;
   audio.setVolume(s.volume / 100);
   for (const P of game.players) P.weapons.setBaseFov(s.fov);
   if (!game.players.length) engine.setFov(s.fov);
@@ -105,7 +105,7 @@ async function start(n) {
 }
 menus.on('play', () => start(1));
 menus.on('coop', () => {
-  if (!gamepad2.connected) menus.flashHint('Connect a gamepad for Player 2 (you can still start).');
+  menus.flashHint('P2 controls: move I J K L · look ← ↑ → ↓ · fire RShift · reload P · buy U');
   start(2);
 });
 function resumeGame() { game.resume(); if (game.players[0]) input1.requestLock(); }
@@ -125,17 +125,15 @@ function loop(now) {
   if (dt > 0.05) dt = 0.05; if (dt < 0) dt = 0;
 
   const s = game.state;
+  const active = (s === 'playing' || s === 'buy');
+  input1.enabled = active; input2.enabled = active;
   if (s === 'playing') {
-    input1.enabled = true;
-    if (input1.locked) menus.hideLock(); else menus.showLock();
+    if (game.numPlayers < 2 && !input1.locked) menus.showLock(); else menus.hideLock();
     game.update(dt);
   } else if (s === 'buy') {
-    input1.enabled = true; menus.hideLock();
-    game.update(dt);
+    menus.hideLock(); game.update(dt);
   } else if (s === 'roundend' || s === 'dead') {
-    input1.enabled = false; game.update(dt);
-  } else {
-    input1.enabled = false;
+    game.update(dt);
   }
 
   engine.render(game.players.length ? game.views() : null);

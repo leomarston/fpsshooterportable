@@ -239,8 +239,9 @@ export class Engine {
   _updateFxaa() {
     if (!this.fxaaPass) return;
     const pr = this.renderer.getPixelRatio();
+    const h = this._composerH || window.innerHeight;
     this.fxaaPass.material.uniforms['resolution'].value.set(
-      1 / (window.innerWidth * pr), 1 / (window.innerHeight * pr));
+      1 / (window.innerWidth * pr), 1 / (h * pr));
   }
 
   setBloom(on) {
@@ -262,45 +263,52 @@ export class Engine {
     this.camera2.aspect = aspect; this.camera2.updateProjectionMatrix();
     if (this.vmCamera) { this.vmCamera.aspect = aspect; this.vmCamera.updateProjectionMatrix(); }
     this.renderer.setSize(w, h);
-    this.composer.setSize(w, h);
-    this.bloomPass?.setSize(w, h);
-    this.gtaoPass?.setSize(w, h);
+    // the composer renders ONE view at a time, sized to that view (full in 1P,
+    // half-height in split) so both halves get the full post-FX pipeline.
+    const ch = this.split ? Math.floor(h / 2) : h;
+    this._composerH = ch;
+    this.composer.setSize(w, ch);
+    this.bloomPass?.setSize(w, ch);
+    this.gtaoPass?.setSize(w, ch);
     this._updateFxaa();
+  }
+
+  // Render a single view (full post-FX) into the current renderer viewport.
+  _renderView(view) {
+    const r = this.renderer;
+    this.renderPass.camera = view.camera || this.camera;
+    if (this.gtaoPass) this.gtaoPass.camera = view.camera || this.camera;
+    const vx = r.getViewport(this._vp || (this._vp = new THREE.Vector4()));
+    this.composer.render();
+    if (view.vmScene) {
+      r.setViewport(vx.x, vx.y, vx.z, vx.w);   // composer may have changed it
+      r.autoClear = false; r.clearDepth();
+      r.render(view.vmScene, this.vmCamera);
+      r.autoClear = true;
+    }
   }
 
   /**
    * Render the given player views. views = [{camera, vmScene}, ...].
-   * 1 view -> full post-FX composer. 2 views -> direct dual scissor render
-   * (top = views[0], bottom = views[1]).
+   * Both single and split use the full composer; split renders each half
+   * into a stacked viewport so the post-FX matches the normal game.
    */
   render(views) {
     const r = this.renderer;
     if (!views || views.length <= 1) {
-      const v = (views && views[0]) || { camera: this.camera, vmScene: null };
-      this.renderPass.camera = v.camera || this.camera;
-      this.composer.render();
-      if (v && v.vmScene) {
-        r.autoClear = false; r.clearDepth();
-        r.render(v.vmScene, this.vmCamera);
-        r.autoClear = true;
-      }
+      r.setViewport(0, 0, r.domElement.width, r.domElement.height);
+      this._renderView((views && views[0]) || { camera: this.camera, vmScene: null });
       return;
     }
-    // split: two stacked halves
-    const w = r.domElement.width, h = r.domElement.height;   // device pixels
-    const halfH = Math.floor(h / 2);
-    const rects = [[0, halfH, w, h - halfH], [0, 0, w, halfH]]; // GL y is bottom-up
-    r.setScissorTest(true);
+    const W = r.domElement.width, H = r.domElement.height, hh = Math.floor(H / 2);
+    const rects = [[0, H - hh, W, hh], [0, 0, W, hh]];   // top, bottom (GL y up)
+    this.vmCamera.aspect = W / (hh || 1); this.vmCamera.updateProjectionMatrix();
     for (let i = 0; i < 2; i++) {
       const [x, y, vw, vh] = rects[i];
       r.setViewport(x, y, vw, vh);
-      r.setScissor(x, y, vw, vh);
-      r.clear();
-      r.render(this.scene, views[i].camera);
-      if (views[i].vmScene) { r.clearDepth(); r.render(views[i].vmScene, this.vmCamera); }
+      this._renderView(views[i]);
     }
-    r.setScissorTest(false);
-    r.setViewport(0, 0, w, h);
+    r.setViewport(0, 0, W, H);
   }
 
   dispose() {
