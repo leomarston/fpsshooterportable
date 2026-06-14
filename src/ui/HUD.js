@@ -26,9 +26,9 @@ const TEMPLATE = (accent) => `
   <div class="vignette"></div>
   <div class="scope hidden"><div class="scope-lens"><div class="scope-h"></div><div class="scope-v"></div></div></div>
   <div class="top-bar">
-    <div class="score-side ct"><span class="score-num score-ct">0</span><span class="score-lbl">KILLS</span></div>
-    <div class="timer-wrap"><div class="round-timer">0:00</div><div class="round-phase">ROUND <b class="round-num">1</b></div></div>
-    <div class="score-side t"><span class="score-num score-t">0</span><span class="score-lbl">HOSTILES</span></div>
+    <div class="score-side ct"><span class="score-num score-ct">0</span><span class="score-lbl">CT <i class="alive-ct">0</i></span></div>
+    <div class="timer-wrap"><div class="round-timer">0:00</div><div class="round-phase">ROUND <b class="round-num">1</b> <span class="half-lbl">1ST</span></div></div>
+    <div class="score-side t"><span class="score-num score-t">0</span><span class="score-lbl">T <i class="alive-t">0</i></span></div>
   </div>
   <div class="killfeed"></div>
   <div class="radar"><canvas class="radar-canvas" width="220" height="220"></canvas><div class="radar-frame"></div><div class="radar-loc">DUST</div></div>
@@ -69,6 +69,8 @@ export class HUD {
       crosshair: q('crosshair'), hitmarker: q('hitmarker'), vignette: q('vignette'),
       dmgDirs: q('damage-dirs'), scope: q('scope'),
       scoreCT: q('score-ct'), scoreT: q('score-t'), timer: q('round-timer'), roundNum: q('round-num'),
+      halfLbl: q('half-lbl'), aliveCT: q('alive-ct'), aliveT: q('alive-t'),
+      sideCT: this.root.querySelector('.score-side.ct'), sideT: this.root.querySelector('.score-side.t'),
       killfeed: q('killfeed'), radar: q('radar-canvas'), radarLoc: q('radar-loc'),
       moneyVal: q('money-val'), moneyGain: q('money-gain'), streak: q('streak-val'),
       buyHint: q('buy-hint'), buyTime: q('buy-time'),
@@ -128,8 +130,19 @@ export class HUD {
   setRound(n) { this.el.roundNum.textContent = n; }
   setTimer(s) { s = Math.max(0, Math.floor(s)); this.el.timer.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   setLocation(name) { if (this.el.radarLoc) this.el.radarLoc.textContent = name; }
-  setEnemies(c) { this.el.scoreT.textContent = c; }
-  setKills(k) { this.el.scoreCT.textContent = k; }
+  // competitive scoreboard: round-wins per side + which side the player is on
+  setMatchScore(ct, t, mySide) {
+    this.el.scoreCT.textContent = ct; this.el.scoreT.textContent = t;
+    if (this.el.sideCT) this.el.sideCT.classList.toggle('mine', mySide === 'CT');
+    if (this.el.sideT) this.el.sideT.classList.toggle('mine', mySide === 'T');
+  }
+  setAlive(ctAlive, tAlive) {
+    if (this.el.aliveCT) this.el.aliveCT.textContent = ctAlive;
+    if (this.el.aliveT) this.el.aliveT.textContent = tAlive;
+  }
+  setHalf(label) { if (this.el.halfLbl) this.el.halfLbl.textContent = label; }
+  setEnemies(c) { if (this.el.aliveT) this.el.aliveT.textContent = c; }
+  setKills(k) { /* personal kills tracked on the scoreboard, not the top bar */ }
   setMoney(m) { this.el.moneyVal.textContent = m; }
   setScore(m) { this.el.moneyVal.textContent = m; }
   setStreak(s) { this.el.streak.textContent = s; }

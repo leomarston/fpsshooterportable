@@ -224,6 +224,17 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
   color:#fff;background:#2a2317;border:1px solid var(--line);border-bottom-width:2px;border-radius:3px}
 .brief-note{font-size:14px;color:var(--text-dim);line-height:1.6;margin-bottom:22px;text-align:center}
 
+/* match setup (team-size picker) */
+.panel.setup{max-width:560px}
+.setup-note{font-size:13.5px;color:var(--text-dim);line-height:1.65;text-align:center;margin-bottom:22px}
+.setup-note b{color:var(--sand)}
+.setup-note .ally{color:#5b8cff;font-weight:600}
+.setup-note .foe{color:#ff5b4d;font-weight:600}
+.setup-sizes{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:22px}
+.setup-sizes .size-btn{padding:16px 0;font-size:16px;font-weight:700;letter-spacing:.06em}
+.setup-sizes .size-btn.disabled,.setup-sizes .size-btn:disabled{opacity:.32;cursor:not-allowed;filter:grayscale(.6)}
+@media (max-width:560px){.setup-sizes{grid-template-columns:repeat(2,1fr)}}
+
 .setting{margin-bottom:18px}
 .setting label{display:flex;justify-content:space-between;font-size:14px;letter-spacing:.08em;
   color:var(--text);margin-bottom:7px}
@@ -371,6 +382,10 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
 .hudv .round-timer{font-size:22px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums}
 .hudv .round-phase{font-size:10px;letter-spacing:.12em;color:var(--sand);margin-top:2px}
 .hudv .round-phase b{color:#fff}
+.hudv .half-lbl{color:#ffffff99;font-size:9px}
+.hudv .score-lbl i{font-style:normal;margin-left:5px;padding:0 4px;border-radius:3px;background:#0008;color:#fff;font-variant-numeric:tabular-nums}
+.hudv .score-side.mine{box-shadow:inset 0 0 0 2px #fff,0 0 12px #fff6}
+.hudv .score-side.mine .score-num{color:#fff}
 
 .hudv .killfeed{position:absolute;top:58px;right:14px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:300px}
 .hudv .kf-row{display:flex;align-items:center;gap:8px;background:#0c0a07cc;border-right:3px solid var(--sand);padding:4px 9px;font-size:12px;font-weight:600;animation:kfin .25s ease-out}

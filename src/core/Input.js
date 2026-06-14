@@ -6,6 +6,7 @@ export class Input {
   constructor(domElement) {
     this.dom = domElement;
     this.kind = 'keyboard';
+    this.pointer = true;            // P1 drives menus with the mouse
     this.keys = new Set();
     this.justPressed = new Set();   // edge-triggered, cleared each frame
     this.mouseDX = 0;

@@ -1,7 +1,8 @@
 /**
  * main — bootstrap. Creates engine/audio/menus, builds per-player input,
- * HUD and buy-menu slots (P1 = keyboard+mouse, P2 = gamepad), wires the
- * menus + pointer-lock, and runs the render loop (1 or 2 split views).
+ * HUD and buy-menu slots (P1 = keyboard+mouse, P2 = second keyboard), wires
+ * the match-setup/menus + pointer-lock, and runs the render loop (1 or 2
+ * split views).
  */
 import { Engine } from './core/Engine.js';
 import { Input } from './core/Input.js';
@@ -95,23 +96,35 @@ async function ensureBuilt() {
   await game.build((p, t) => menus.loadProgress(p, t));
   menus.hideLoadProgress();
 }
-async function start(n) {
+async function start(n, teamSize) {
   audio.resume();
   if (!game.built) await ensureBuilt();
   applyLayout(n);
   applySettings(menus.settings);
   menus.hideAll();
-  game.startGame(n);
+  game.startMatch(n, teamSize);
 }
-menus.on('play', () => start(1));
+
+// Match setup: pick the team size (1v1 … 5v5) before deploying.
+let pendingHumans = 1;
+menus.on('play', () => { pendingHumans = 1; menus.showSetup(1); });
 menus.on('coop', () => {
+  pendingHumans = 2;
   menus.flashHint('P2 controls: move I J K L · look ← ↑ → ↓ · fire RShift · reload P · buy U');
-  start(2);
+  menus.showSetup(2);
 });
+document.querySelectorAll('.size-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    if (b.disabled) return;
+    audio.ui?.('click');
+    start(pendingHumans, parseInt(b.dataset.size, 10));
+  });
+});
+
 function resumeGame() { game.resume(); if (game.players[0]) input1.requestLock(); }
 menus.on('resume', resumeGame);
 menus.on('quit', () => game.quitToMenu());
-menus.on('retry', () => start(game.numPlayers || 1));
+menus.on('retry', () => start(game.numHumans || 1, game.teamSize || game.numHumans || 1));
 menus.on('mainmenu', () => game.quitToMenu());
 menus.on('nextround', () => game.nextRound());
 menus.on('settings', (s, key) => applySettings(s, key));
@@ -128,11 +141,11 @@ function loop(now) {
   const active = (s === 'playing' || s === 'buy');
   input1.enabled = active; input2.enabled = active;
   if (s === 'playing') {
-    if (game.numPlayers < 2 && !input1.locked) menus.showLock(); else menus.hideLock();
+    if (game.numHumans < 2 && !input1.locked) menus.showLock(); else menus.hideLock();
     game.update(dt);
   } else if (s === 'buy') {
     menus.hideLock(); game.update(dt);
-  } else if (s === 'roundend' || s === 'dead') {
+  } else if (s === 'roundend' || s === 'matchover') {
     game.update(dt);
   }
 

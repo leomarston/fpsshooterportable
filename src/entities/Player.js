@@ -32,6 +32,13 @@ export class Player {
     this.maxArmor = 100; this.armor = 100;
     this.alive = true;
 
+    // --- combatant identity (shared shape with Enemy bots) ---
+    this.team = 0;           // 0 = human team, 1 = opposing
+    this.isBot = false;
+    this.name = 'PLAYER';
+    this.hudOwner = null;    // per-player wrapper that owns this player's HUD
+    this.damageMult = 1;
+
     // tuning (metres, seconds)
     this.runSpeed = 7.2;
     this.walkSpeed = 3.6;
@@ -100,6 +107,25 @@ export class Player {
       this.damageDir = Math.atan2(dir.x, -dir.z) - this.yaw;
     }
     if (this.health <= 0) { this.health = 0; this.alive = false; }
+  }
+
+  /* ----------------------- combatant interface ----------------------- */
+  // Hitboxes used by Combat (separate head box for headshots).
+  bodyBox() {
+    const r = 0.4;
+    return { min: new THREE.Vector3(this.feet.x - r, this.feet.y + 0.1, this.feet.z - r),
+             max: new THREE.Vector3(this.feet.x + r, this.feet.y + this.height - 0.28, this.feet.z + r) };
+  }
+  headBox() {
+    const r = 0.22;
+    return { min: new THREE.Vector3(this.feet.x - r, this.feet.y + this.height - 0.32, this.feet.z - r),
+             max: new THREE.Vector3(this.feet.x + r, this.feet.y + this.height, this.feet.z + r) };
+  }
+  // Uniform damage entry (mirrors Enemy.applyDamage); returns true if this hit killed.
+  applyDamage(dmg, headshot, dir, fromPos, fx) {
+    const wasAlive = this.alive;
+    this.takeDamage(dmg, fromPos, headshot);
+    return wasAlive && !this.alive;
   }
 
   _wishDir() {

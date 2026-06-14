@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { roundedBox, capsule } from '../core/Geo.js';
 
 const EYE = 1.55, HEIGHT = 1.75, RADIUS = 0.4;
+const _BLOOD_DIR = new THREE.Vector3(0, 0, -1);
 
 let _id = 0;
 
@@ -28,6 +29,15 @@ export class Enemy {
     this.health = opts.health;
     this.dead = false;
     this.deadTime = 0;
+
+    // --- combatant identity (shared shape with Player) ---
+    this.team = opts.team != null ? opts.team : 1;
+    this.isBot = true;
+    this.hudOwner = null;
+    this.name = opts.name || 'BOT';
+    this.damageMult = opts.damageMult || 1;
+    this.noise = 0;
+    this._eyeVec = new THREE.Vector3();
 
     this.state = 'idle';
     this.stateTime = 0;
@@ -62,7 +72,9 @@ export class Enemy {
     const clothDark = new THREE.MeshStandardMaterial({ color: 0x3a3e30, roughness: 0.8, metalness: 0.05 });
     const vest = new THREE.MeshStandardMaterial({ color: 0x262922, roughness: 0.55, metalness: 0.3, envMapIntensity: env });
     const rubber = new THREE.MeshStandardMaterial({ color: 0x14140f, roughness: 0.8, metalness: 0.1 });
-    const accent = new THREE.MeshStandardMaterial({ color: 0xc23a2c, roughness: 0.5, metalness: 0.2, emissive: 0x4a0e07, emissiveIntensity: 0.5 }); // red = hostile readability
+    // readability accent: blue for friendly (allied) bots, red for hostiles
+    const friendly = !!this.cfg.friendly;
+    const accent = new THREE.MeshStandardMaterial({ color: friendly ? 0x2f6bff : 0xc23a2c, roughness: 0.5, metalness: 0.2, emissive: friendly ? 0x07194d : 0x4a0e07, emissiveIntensity: 0.5 });
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.45, metalness: 0.65, envMapIntensity: env });
     const glove = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.7, metalness: 0.1 });
 
@@ -170,7 +182,14 @@ export class Enemy {
   }
 
   get position() { return this.feet; }
+  get alive() { return !this.dead; }
+  get eyePos() { return this.eyePosition(this._eyeVec); }
   eyePosition(out) { return (out || this._tmp).set(this.feet.x, this.feet.y + EYE, this.feet.z); }
+
+  // Uniform damage entry (mirrors Player.applyDamage); returns true if killed.
+  applyDamage(dmg, headshot, dir, fromPos, fx) {
+    return this.hit(dmg, headshot, dir || _BLOOD_DIR, fx);
+  }
 
   bodyBox() {
     return { min: new THREE.Vector3(this.feet.x - RADIUS, this.feet.y + 0.05, this.feet.z - RADIUS),
@@ -274,9 +293,9 @@ export class Enemy {
     switch (this.state) {
       case 'idle':
         this.vel.x = this.vel.z = 0;
-        if (this.stateTime > 0.6 + Math.random()) {
-          // wander toward a site / random point to look for player
-          this.lastKnownFeet = ctx.nav.randomPoint();
+        if (this.stateTime > 0.4 + Math.random() * 0.6) {
+          // advance toward the contested objective (else wander) to find the enemy
+          this.lastKnownFeet = this._wanderTarget(ctx);
           this._setState('hunt');
         }
         break;
@@ -304,15 +323,26 @@ export class Enemy {
     this.vel.x *= 0.8; this.vel.z *= 0.8;
     // look around
     this.aimYaw += dt * 1.5 * this.strafeDir;
-    if (this.stateTime > 2.5) {
-      this.lastKnownFeet = ctx.nav.randomPoint();
+    if (this.stateTime > 2.0) {
+      this.lastKnownFeet = this._wanderTarget(ctx);
       this._setState('hunt');
     }
     if (this.canSee) this._setState('engage');
   }
 
+  // Where to head when no enemy is in sight: mostly push the contested
+  // objective (so the two teams converge and fight), sometimes free-roam.
+  _wanderTarget(ctx) {
+    const o = this.cfg.objective;
+    if (o && Math.random() < 0.82) {
+      return new THREE.Vector3(o.x + (Math.random() - 0.5) * 9, o.y, o.z + (Math.random() - 0.5) * 9);
+    }
+    return ctx.nav.randomPoint();
+  }
+
   _engage(dt, ctx) {
     const p = ctx.player;
+    if (!p) { this._setState('search'); return; }
     const eye = this.eyePosition(new THREE.Vector3());
     const aimTarget = this.canSee ? p.eyePos.clone().add(new THREE.Vector3(0, -0.15, 0)) : (this.lastKnown || p.eyePos);
 
@@ -361,9 +391,11 @@ export class Enemy {
     this.vel.x *= 0.85; this.vel.z *= 0.85;
     // back off toward cover a bit
     const p = ctx.player;
-    const away = new THREE.Vector3(this.feet.x - p.position.x, 0, this.feet.z - p.position.z).normalize();
-    this.vel.x += away.x * this.cfg.moveSpeed * 0.3 * dt * 8;
-    this.vel.z += away.z * this.cfg.moveSpeed * 0.3 * dt * 8;
+    if (p) {
+      const away = new THREE.Vector3(this.feet.x - p.position.x, 0, this.feet.z - p.position.z).normalize();
+      this.vel.x += away.x * this.cfg.moveSpeed * 0.3 * dt * 8;
+      this.vel.z += away.z * this.cfg.moveSpeed * 0.3 * dt * 8;
+    }
     this.reloadTimer -= dt;
     if (this.reloadTimer <= 0) {
       this.mag = this.cfg.weapon.magSize === Infinity ? 30 : this.cfg.weapon.magSize;
@@ -391,7 +423,7 @@ export class Enemy {
     let cone = this.cfg.spread + (moving ? 0.04 : 0);
     const dir = coneRandom(baseDir, cone);
 
-    ctx.combat.resolveEnemyShot(muzzleWorld, dir, this, p.eyePos);
+    ctx.combat.resolveShot(muzzleWorld, dir, w, true, false, this);
     // fx
     this.muzzleFlashT = 0.04;
     const s = 0.7 + Math.random() * 0.5; this.flash.scale.set(s, s, s);
@@ -530,25 +562,26 @@ export class EnemyManager {
     return e;
   }
 
-  update(dt, players) {
-    const list = Array.isArray(players) ? players : [players];
+  // `combatants` = every fighter on the map (player ents + all bots).
+  // Each bot targets the nearest opposing-team combatant (visible preferred).
+  update(dt, combatants) {
+    const all = Array.isArray(combatants) ? combatants : [combatants];
     const ctx = {
-      player: null, players: list, world: this.world, nav: this.nav, audio: this.audio,
+      player: null, players: all, world: this.world, nav: this.nav, audio: this.audio,
       fx: this.fx, combat: this.combat, enemies: this.enemies,
       now: this._now, camera: this.camera,
     };
     const tmp = new THREE.Vector3();
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      // pick this bot's target: nearest visible alive player, else nearest alive
       let target = null, tvis = false, tdist = Infinity;
       const eye = e.eyePosition(tmp).clone();
-      for (const p of list) {
-        if (!p || !p.alive) continue;
-        const d = e.feet.distanceTo(p.position);
-        const vis = this.world.lineOfSight(eye, p.eyePos);
-        if (vis) { if (!tvis || d < tdist) { target = p; tvis = true; tdist = d; } }
-        else if (!tvis && d < tdist) { target = p; tdist = d; }
+      for (const c of all) {
+        if (!c || c === e || !c.alive || c.team === e.team) continue;
+        const d = e.feet.distanceTo(c.position);
+        const vis = this.world.lineOfSight(eye, c.eyePos);
+        if (vis) { if (!tvis || d < tdist) { target = c; tvis = true; tdist = d; } }
+        else if (!tvis && d < tdist) { target = c; tdist = d; }
       }
       ctx.player = target;
       e.update(dt, ctx);
@@ -557,5 +590,6 @@ export class EnemyManager {
   }
 
   get aliveCount() { let n = 0; for (const e of this.enemies) if (!e.dead) n++; return n; }
+  aliveOnTeam(team) { let n = 0; for (const e of this.enemies) if (!e.dead && e.team === team) n++; return n; }
   clearAll() { for (const e of this.enemies) e.dispose(); this.enemies = []; }
 }

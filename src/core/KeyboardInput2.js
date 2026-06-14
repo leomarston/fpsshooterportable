@@ -28,6 +28,7 @@ const P2_KEYS = new Set(['KeyI', 'KeyJ', 'KeyK', 'KeyL', 'ArrowUp', 'ArrowDown',
 export class KeyboardInput2 {
   constructor() {
     this.kind = 'keyboard';
+    this.pointer = false;        // P2 has no mouse → navigates menus by keyboard
     this.locked = true;          // no pointer lock for P2
     this.enabled = false;
     this.invertY = false;

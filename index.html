@@ -39,9 +39,28 @@
         <button id="btn-howto" class="btn">BRIEFING</button>
         <button id="btn-settings" class="btn">SETTINGS</button>
       </div>
+      <p class="tagline" style="margin-top:10px;font-size:.78rem;opacity:.7">Competitive · 10 rounds · CT vs T · sides swap at halftime</p>
       <div id="menu-hint" class="menu-hint"></div>
       <div id="loadprog" class="loadprog hidden"><div class="bar"><i></i></div><span>Forging assets…</span></div>
       <div class="menu-foot">Headphones recommended · Desktop + mouse required</div>
+    </div>
+  </div>
+
+  <!-- Match setup: choose team size -->
+  <div id="setup" class="overlay hidden">
+    <div class="panel setup">
+      <h2>CHOOSE FORMAT</h2>
+      <p class="setup-note">MR5 — 10 rounds, sides swap at halftime, first team to <b>6</b> wins (5–5 draws).
+        You (and Player 2) play co-op as one team; bots fill the empty slots on <em>both</em> teams.
+        <span class="ally">Allies are blue</span>, <span class="foe">enemies are red</span>.</p>
+      <div class="setup-sizes">
+        <button class="btn size-btn" data-size="1">1 v 1</button>
+        <button class="btn size-btn" data-size="2">2 v 2</button>
+        <button class="btn size-btn" data-size="3">3 v 3</button>
+        <button class="btn size-btn" data-size="4">4 v 4</button>
+        <button class="btn size-btn" data-size="5">5 v 5</button>
+      </div>
+      <button class="btn close-overlay" data-close="setup">CANCEL</button>
     </div>
   </div>
 
@@ -63,8 +82,9 @@
         <div><kbd>G</kbd><p>Drop / pickup</p></div>
         <div><kbd>ESC</kbd><p>Pause</p></div>
       </div>
-      <p class="brief-note">Win each round by eliminating every hostile. Each round
-        spawns more enemies with sharper aim. Headshots deal massive damage — and so do theirs.</p>
+      <p class="brief-note">Competitive: two teams, CT vs T. Win a round by wiping the enemy team.
+        10 rounds, sides swap at halftime, first to 6 wins. Each round opens with buy time — pick your
+        loadout, then fight alongside your blue allies against the red enemy team. Headshots are lethal.</p>
       <p class="brief-note"><b>2-PLAYER CO-OP (same keyboard):</b> Player 2 — move <kbd>I</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd>,
         look <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd>, fire <kbd>R-Shift</kbd>, aim <kbd>/</kbd>, reload <kbd>P</kbd>,
         switch <kbd>O</kbd>, jump <kbd>'</kbd>, crouch <kbd>.</kbd>, buy <kbd>U</kbd>.</p>

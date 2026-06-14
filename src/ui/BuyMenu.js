@@ -1,8 +1,8 @@
 /**
  * BuyMenu — per-player purchase screen built into its own container, so two
  * can coexist in split-screen. Two columns; categories stacked with prices.
- * Player 1 buys with the mouse; player 2 navigates with the gamepad
- * (stick = move selection, A = buy, Start/B = deploy).
+ * Player 1 buys with the mouse; Player 2 (no mouse) navigates by keyboard:
+ * I/K move the selection, R-Shift buys it, U deploys.
  */
 import { WEAPONS, EQUIPMENT, BUY_LAYOUT } from '../entities/WeaponData.js';
 import { weaponIcon } from './HUD.js';
@@ -87,7 +87,8 @@ export class BuyMenu {
   }
 
   _highlight() {
-    this.items.forEach((it, i) => it.classList.toggle('sel', i === this.sel && this.P && this.P.input.kind === 'gamepad'));
+    const navByKeys = this.P && this.P.input && this.P.input.pointer === false;
+    this.items.forEach((it, i) => it.classList.toggle('sel', i === this.sel && navByKeys));
     const it = this.items[this.sel];
     if (it && it.scrollIntoView) it.scrollIntoView({ block: 'nearest' });
   }
@@ -101,17 +102,17 @@ export class BuyMenu {
     this.el.balance.textContent = '$' + this.P.money;
     this.root.classList.toggle('timeup', secs <= 0);
 
-    // gamepad navigation
-    if (this.P.input.kind === 'gamepad') {
+    // keyboard navigation for the mouse-less player (P2)
+    if (this.P.input.pointer === false) {
       const inp = this.P.input;
       this._navCd -= 1 / 60;
-      const ax = inp.moveAxis();
+      const ax = inp.moveAxis ? inp.moveAxis() : { f: 0, s: 0 };
       if (this._navCd <= 0) {
-        if (ax.f > 0.5) { this._move(-1); this._navCd = 0.16; }
-        else if (ax.f < -0.5) { this._move(1); this._navCd = 0.16; }
+        if (ax.f > 0.5 || ax.s < -0.5) { this._move(-1); this._navCd = 0.16; }
+        else if (ax.f < -0.5 || ax.s > 0.5) { this._move(1); this._navCd = 0.16; }
       }
-      if (inp.pressed('Space')) this._confirm();                         // A = buy
-      if (inp.pressed('Escape') || inp.pressed('ControlLeft')) this.game.closeBuy(this.P); // Start/B = deploy
+      if (inp.justClicked && inp.justClicked.left) this._confirm();      // R-Shift = buy
+      if (inp.pressed && inp.pressed('KeyB')) this.game.closeBuy(this.P); // U = deploy
     }
   }
 }

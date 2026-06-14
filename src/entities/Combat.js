@@ -1,11 +1,11 @@
 /**
- * Combat — hitscan resolution shared by the player and the bots.
+ * Combat — hitscan resolution shared by every combatant (players + bots).
  *
- * A shot raycasts the world for the nearest blocking surface, then
- * tests character hitboxes (separate head boxes for headshots) that are
- * closer than that surface. Damage uses range falloff + headshot
- * multipliers; tracers, impact particles, blood and hit-markers are
- * spawned here so all fire feels consistent.
+ * A shot raycasts the world for the nearest blocking surface, then tests the
+ * hitboxes of every OTHER combatant on an opposing team (friendly fire off),
+ * picking the nearest one closer than that surface (separate head boxes give
+ * headshots). Damage uses range falloff + headshot/owner multipliers; tracers,
+ * impacts, blood and hit-markers are spawned here so all fire feels consistent.
  */
 import * as THREE from 'three';
 
@@ -14,123 +14,74 @@ export class Combat {
     this.world = world;
     this.fx = fx;
     this.audio = audio;
-    this.players = [];       // player entities (1 or 2)
-    this.enemies = null;     // EnemyManager
-    // hooks (set by Game) — all routed with the relevant player
-    this.onHitmarker = null; // (owner, headshot, killed)
-    this.onKill = null;      // (owner, enemy, weapon, headshot)
-    this.onPlayerHit = null; // (ent, dmg, fromPos, headshot)
+    this.combatants = [];    // every fighter on the map (player ents + bots)
+    // hooks (set by Game)
+    this.onHit = null;       // (owner, victim, weapon, headshot, killed)
     this.onScope = null;     // (owner, bool)
     this._tmpOrigin = new THREE.Vector3();
   }
 
-  setPlayers(arr) { this.players = arr; }
-  setEnemies(m) { this.enemies = m; }
+  setCombatants(arr) { this.combatants = arr || []; }
   muzzleFlashWorld(pos) { this.fx.muzzleFlashWorld(pos); }
   setScope(on, owner) { this.onScope?.(owner, on); }
 
-  /* ----------------------- player → world / enemies ----------------------- */
+  /* --------------------- one shot from any combatant --------------------- */
   resolveShot(origin, dir, weapon, isFirst, isMelee = false, owner = null) {
     const range = weapon.range || 100;
     const wHit = this.world.raycast(origin, dir, range, true);
     const wDist = wHit ? wHit.dist : range;
+    const ownerTeam = owner ? owner.team : -1;
 
-    // nearest enemy hitbox closer than the wall
+    // nearest opposing combatant whose hitbox is closer than the wall
     let best = null;
-    if (this.enemies) {
-      for (const e of this.enemies.enemies) {
-        if (e.dead) continue;
-        const head = rayAABB(origin, dir, e.headBox());
-        const body = rayAABB(origin, dir, e.bodyBox());
-        let t = null, headshot = false;
-        if (head != null && (body == null || head <= body)) { t = head; headshot = true; }
-        else if (body != null) { t = body; headshot = false; }
-        if (t != null && t < wDist && t <= range && (!best || t < best.t)) {
-          best = { t, headshot, enemy: e };
-        }
-      }
+    for (const c of this.combatants) {
+      if (c === owner || !c.alive || c.team === ownerTeam) continue;
+      const head = rayAABB(origin, dir, c.headBox());
+      const body = rayAABB(origin, dir, c.bodyBox());
+      let t = null, headshot = false;
+      if (head != null && (body == null || head <= body)) { t = head; headshot = true; }
+      else if (body != null) { t = body; headshot = false; }
+      if (t != null && t < wDist && t <= range && (!best || t < best.t)) best = { t, headshot, victim: c };
     }
 
-    const muzzle = this._muzzlePoint(origin, dir);
+    const muzzle = isMelee ? origin : this._muzzlePoint(origin, dir);
 
     if (best) {
       const point = origin.clone().addScaledVector(dir, best.t);
-      let dmg = weapon.damage;
-      dmg *= falloff(weapon, best.t);
+      let dmg = weapon.damage * falloff(weapon, best.t);
       if (best.headshot) dmg *= (weapon.headshotMult || 1);
+      dmg *= (owner && owner.damageMult) || 1;
       this.fx.tracer(muzzle, point);
-      this.fx.blood(point, dir);
-      const killed = best.enemy.hit(dmg, best.headshot, dir, this.fx);
-      this.audio.hitMarker(best.headshot);
-      this.onHitmarker?.(owner, best.headshot, killed);
-      if (killed) this.onKill?.(owner, best.enemy, weapon, best.headshot);
-      return { hit: 'enemy', headshot: best.headshot, killed, point };
+      const fromPos = owner ? (owner.eyePos || owner.position) : point;
+      const killed = best.victim.applyDamage(dmg, best.headshot, dir, fromPos, this.fx);
+      if (owner && owner.hudOwner) this.audio.hitMarker(best.headshot);  // only humans get the click
+      this.onHit?.(owner, best.victim, weapon, best.headshot, killed);
+      return { hit: 'combatant', headshot: best.headshot, killed, point, victim: best.victim };
     }
 
     if (wHit) {
       this.fx.tracer(muzzle, wHit.point);
       this.fx.impact(wHit.point, wHit.normal, wHit.surface);
       this.audio.impact(wHit.surface, wHit.point);
-      return { hit: 'world', point: wHit.point };
+    } else if (!isMelee) {
+      this.fx.tracer(muzzle, origin.clone().addScaledVector(dir, range));
     }
 
-    if (!isMelee) {
-      const end = origin.clone().addScaledVector(dir, range);
-      this.fx.tracer(muzzle, end);
+    // a bot's miss that whizzes past a human ear
+    if (owner && owner.isBot) {
+      for (const c of this.combatants) {
+        if (!c.alive || c.isBot || c.team === ownerTeam) continue;
+        const close = pointLineDist(c.eyePos, origin, dir, Math.min(wDist, range));
+        if (close < 1.6) { this.audio.whizz(null, 0); break; }
+      }
     }
-    return { hit: null };
-  }
-
-  /* ------------------------- enemy → world / players ------------------------- */
-  resolveEnemyShot(origin, dir, enemy, playerEye) {
-    const w = enemy.cfg.weapon;
-    const range = w.range || 90;
-    const wHit = this.world.raycast(origin, dir, range, true);
-    const wDist = wHit ? wHit.dist : range;
-
-    // nearest hit player (each player tested for body/head)
-    let best = null;
-    for (const p of this.players) {
-      if (!p.alive) continue;
-      const body = rayAABB(origin, dir, playerBox(p));
-      const head = rayAABB(origin, dir, playerHeadBox(p));
-      let pt = null, headshot = false;
-      if (head != null && (body == null || head <= body)) { pt = head; headshot = true; }
-      else if (body != null) { pt = body; headshot = false; }
-      if (pt != null && pt < wDist && pt <= range && (!best || pt < best.pt)) best = { p, pt, headshot };
-    }
-
-    if (best) {
-      const p = best.p, point = origin.clone().addScaledVector(dir, best.pt);
-      let dmg = w.damage * falloff(w, best.pt);
-      if (best.headshot) dmg *= (w.headshotMult || 1);
-      dmg *= enemy.cfg.damageMult || 1;
-      this.fx.tracer(origin, point);
-      p.takeDamage(dmg, enemy.position.clone().setY(point.y), best.headshot);
-      this.onPlayerHit?.(p, dmg, enemy.position, best.headshot);
-      return;
-    }
-
-    // missed everyone — whizz if it passed close to a player, then hit the world
-    for (const p of this.players) {
-      if (!p.alive) continue;
-      const close = pointLineDist(p.eyePos, origin, dir, Math.min(wDist, range));
-      if (close < 1.6) { this.audio.whizz(null, this._panFor(origin)); break; }
-    }
-    if (wHit) {
-      this.fx.tracer(origin, wHit.point);
-      this.fx.impact(wHit.point, wHit.normal, wHit.surface);
-      this.audio.impact(wHit.surface, wHit.point);
-    } else {
-      this.fx.tracer(origin, origin.clone().addScaledVector(dir, range));
-    }
+    return { hit: wHit ? 'world' : null, point: wHit ? wHit.point : null };
   }
 
   _muzzlePoint(origin, dir) {
     // start tracer a little ahead of the eye so it reads as gun-fired
     return origin.clone().addScaledVector(dir, 0.7).add(new THREE.Vector3(0, -0.12, 0));
   }
-  _panFor() { return 0; }
 }
 
 /* ------------------------------ helpers ------------------------------ */
@@ -140,17 +91,6 @@ function falloff(weapon, dist) {
   if (dist <= f.start) return 1;
   if (dist >= f.end) return f.min;
   return THREE.MathUtils.lerp(1, f.min, (dist - f.start) / (f.end - f.start));
-}
-
-function playerBox(p) {
-  const r = 0.4;
-  return { min: new THREE.Vector3(p.feet.x - r, p.feet.y + 0.1, p.feet.z - r),
-           max: new THREE.Vector3(p.feet.x + r, p.feet.y + p.height - 0.28, p.feet.z + r) };
-}
-function playerHeadBox(p) {
-  const r = 0.22;
-  return { min: new THREE.Vector3(p.feet.x - r, p.feet.y + p.height - 0.32, p.feet.z - r),
-           max: new THREE.Vector3(p.feet.x + r, p.feet.y + p.height, p.feet.z + r) };
 }
 
 // Ray vs AABB slab test; returns entry distance t>0 or null.

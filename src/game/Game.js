@@ -1,11 +1,12 @@
 /**
- * Game — orchestrates the match for 1 or 2 local (split-screen) players.
+ * Game — CS:GO-style competitive match for 1–2 local (split-screen) humans.
  *
- * Builds the shared world (map, navmesh, enemies) once; each player has
- * its own Player entity, weapons, camera, input, HUD, buy menu and
- * economy. Co-op rounds: clear every hostile to win; both players respawn
- * each round; a downed player spectates until the round ends; the run
- * ends only when every player is down.
+ * Two teams (CT / T). The humans always co-op on team 0; bots fill the rest
+ * of team 0 and all of team 1 up to the chosen size (1v1 … 5v5). MR5: rounds
+ * 1–5 are the first half, 6–10 the second, sides swap (and economy resets) at
+ * halftime. A round is won by wiping the other team; first team to 6 round-wins
+ * takes the match (5–5 is a draw). Every round opens with freeze/buy time.
+ * Friendly fire is off; allies render blue, enemies red.
  */
 import * as THREE from 'three';
 import { Forge } from '../core/AssetForge.js';
@@ -20,21 +21,27 @@ import { EnemyManager } from '../entities/Enemy.js';
 import { FX } from '../fx/FX.js';
 
 const lerp = (a, b, t) => a + (b - a) * t;
+const HALF_ROUNDS = 5;       // rounds per half
+const MAX_ROUNDS = 10;       // total rounds in a match
+const CLINCH = 6;            // round-wins needed to take the match
+const ROUND_TIME = 95;       // seconds of live play before CT win by default
 
 export class Game {
   constructor(engine, audio) {
     this.engine = engine;
     this.audio = audio;
 
-    this.state = 'menu';        // menu | buy | playing | roundend | dead | paused
+    this.state = 'menu';        // menu | buy | playing | roundend | matchover | paused
     this.round = 0;
+    this.wins = [0, 0];         // round-wins per team (team0 = humans, team1 = bots)
+    this.lossStreak = [0, 0];   // consecutive round losses per team (loss-bonus)
     this.totalKills = 0; this.headshots = 0;
-    this._roundCountdown = 0; this._deathTimer = 0; this._endDelay = 0;
+    this._roundCountdown = 0; this._endDelay = 0; this._roundResolved = false;
     this.built = false;
 
-    this.players = [];          // active player objects
+    this.players = [];          // human player objects
     this.slots = [];            // available player slots (input/camera/hud/buyMenu)
-    this.numPlayers = 1;
+    this.numHumans = 1; this.numPlayers = 1; this.teamSize = 1;
     this.menus = null;          // set by main
 
     this._freezeEnd = 0; this._buyEnd = 0; this.frozen = false;
@@ -58,7 +65,6 @@ export class Game {
 
     this.combat = new Combat(this.world, this.fx, this.audio);
     this.enemyMgr = new EnemyManager(scene, this.world, this.nav, this.audio, this.fx, this.combat, this.engine.camera);
-    this.combat.setEnemies(this.enemyMgr);
     this._wireCombat();
 
     onProgress?.(1.0, 'Ready'); await frame();
@@ -69,15 +75,17 @@ export class Game {
 
   _makePlayer(slot, i) {
     const ent = new Player(slot.camera, slot.input, this.world, this.audio);
+    ent.team = 0; ent.isBot = false;
     const weapons = new WeaponManager(this.engine, slot.camera, slot.input, this.audio, ent, this.combat);
     const P = {
       id: i, name: slot.name || ('PLAYER ' + (i + 1)), color: slot.color || 0x39ff8e,
       input: slot.input, camera: slot.camera, hud: slot.hud, buyMenu: slot.buyMenu,
       ent, weapons,
       money: MONEY_START, owned: { primary: null, pistol: 'glock', armor: 0, helmet: false },
-      kills: 0, streak: 0, buyOpen: false, deadHandled: false,
+      kills: 0, deaths: 0, streak: 0, buyOpen: false, deadHandled: false, lostLoadout: false,
     };
-    weapons.owner = P;
+    ent.name = P.name; ent.hudOwner = P;
+    weapons.owner = ent;             // combat owner is the combatant entity
     weapons.onAmmoChange = (w, mag, reserve, reloading) => {
       P.hud.setAmmo(w, mag, reserve, reloading);
       P.hud.setWeaponSlots(weapons.available, weapons.current, WEAPONS);
@@ -86,116 +94,195 @@ export class Game {
     return P;
   }
 
-  byOwner(owner) { return owner || this.players[0]; }
   byEnt(ent) { return this.players.find(p => p.ent === ent) || this.players[0]; }
 
   _wireCombat() {
-    this.combat.onHitmarker = (owner, headshot, killed) => this.byOwner(owner).hud.hitmarker(headshot, killed);
-    this.combat.onScope = (owner, on) => this.byOwner(owner).hud.showScope(on);
-    this.combat.onKill = (owner, enemy, weapon, headshot) => {
-      const P = this.byOwner(owner);
-      P.kills++; P.streak++; this.totalKills++; if (headshot) this.headshots++;
-      const reward = (weapon.killReward || 300) + (headshot ? 100 : 0);
-      P.money = Math.min(MONEY_MAX, P.money + reward);
-      P.hud.setKills(P.kills); P.hud.setMoney(P.money); P.hud.setStreak(P.streak); P.hud.moneyGain(reward);
-      P.hud.killfeed(P.name, 'HOSTILE', weapon.name, headshot);
-      for (const q of this.players) q.hud.setEnemies(this.enemyMgr.aliveCount);
-      if (P.streak === 3) P.hud.announce('TRIPLE KILL', '', 1100, '#ffd23d');
-      if (P.streak === 5) P.hud.announce('RAMPAGE', '', 1300, '#ff7a3d');
-    };
-    this.combat.onPlayerHit = (ent, dmg, fromPos, headshot) => {
-      const P = this.byEnt(ent);
-      P.hud.damageFlash();
-      const dir = new THREE.Vector3().subVectors(fromPos, ent.eyePos);
-      P.hud.damageDirection(Math.atan2(dir.x, -dir.z) - ent.yaw);
-      P.streak = 0; P.hud.setStreak(0);
+    this.combat.onScope = (owner, on) => { const P = owner && owner.hudOwner; if (P) P.hud.showScope(on); };
+    this.combat.onHit = (owner, victim, weapon, headshot, killed) => {
+      const shooter = owner && owner.hudOwner;   // human shooter wrapper, else null
+      const victimP = victim && victim.hudOwner; // human victim wrapper, else null
+
+      if (shooter) {
+        shooter.hud.hitmarker(headshot, killed);
+        if (killed) {
+          shooter.kills++; shooter.streak++; this.totalKills++; if (headshot) this.headshots++;
+          const reward = (weapon.killReward || 300) + (headshot ? 100 : 0);
+          shooter.money = Math.min(MONEY_MAX, shooter.money + reward);
+          shooter.hud.setMoney(shooter.money); shooter.hud.setStreak(shooter.streak); shooter.hud.moneyGain(reward);
+          if (shooter.streak === 3) shooter.hud.announce('TRIPLE KILL', '', 1100, '#ffd23d');
+          if (shooter.streak === 5) shooter.hud.announce('ACE IN SIGHT', '', 1300, '#ff7a3d');
+        }
+      }
+      if (victimP) {
+        victimP.hud.damageFlash();
+        const from = (owner && (owner.eyePos || owner.position)) || victim.eyePos;
+        const dir = new THREE.Vector3().subVectors(from, victim.eyePos);
+        victimP.hud.damageDirection(Math.atan2(dir.x, -dir.z) - victim.yaw);
+        victimP.streak = 0; victimP.hud.setStreak(0);
+      }
+      if (killed) {
+        const actor = owner ? owner.name : 'WORLD';
+        const vict = victim ? victim.name : '';
+        for (const P of this.players) P.hud.killfeed(actor, vict, weapon.name, headshot);
+      }
     };
   }
 
+  /* ------------------------------ sides / teams ------------------------------ */
+
+  _isSecondHalf() { return this.round > HALF_ROUNDS; }
+  // Which side a team plays this round (team 0 = CT in the first half).
+  _sideOfTeam(team) { const team0CT = !this._isSecondHalf(); return (team === 0) === team0CT ? 'CT' : 'T'; }
+  _teamForSide(side) {
+    const team0CT = !this._isSecondHalf();
+    if (side === 'CT') return team0CT ? 0 : 1;
+    return team0CT ? 1 : 0;
+  }
+  _humanSide() { return this._sideOfTeam(0); }
+  _ctWins() { return this.wins[this._teamForSide('CT')]; }
+  _tWins() { return this.wins[this._teamForSide('T')]; }
+
+  _allCombatants() { return [...this.players.map(p => p.ent), ...this.enemyMgr.enemies]; }
+  _teamAlive(team) { let n = 0; for (const c of this._allCombatants()) if (c.team === team && c.alive) n++; return n; }
+
   /* ------------------------------ flow ------------------------------ */
 
-  startGame(numPlayers = 1) {
-    this.numPlayers = Math.min(numPlayers, this.slots.length);
-    this.engine.setPlayerCount(this.numPlayers);
-    // (re)build player objects
+  // numPlayers = humans connected; teamSize = 1..5 (clamped to >= humans).
+  startMatch(numPlayers = 1, teamSize = numPlayers) {
+    this.numHumans = Math.min(numPlayers, this.slots.length);
+    this.numPlayers = this.numHumans;
+    this.teamSize = Math.max(this.numHumans, Math.min(5, (teamSize | 0) || 1));
+    this.engine.setPlayerCount(this.numHumans);
+
     this.players = [];
-    for (let i = 0; i < this.numPlayers; i++) this.players.push(this._makePlayer(this.slots[i], i));
-    this.combat.setPlayers(this.players.map(p => p.ent));
-    this.enemyMgr.players = this.players.map(p => p.ent);
-    this.round = 0; this.totalKills = 0; this.headshots = 0;
+    for (let i = 0; i < this.numHumans; i++) this.players.push(this._makePlayer(this.slots[i], i));
+
+    this.round = 0; this.wins = [0, 0]; this.lossStreak = [0, 0];
+    this.totalKills = 0; this.headshots = 0;
     this.enemyMgr.clearAll();
     for (const P of this.players) {
       P.money = MONEY_START; P.owned = { primary: null, pistol: 'glock', armor: 0, helmet: false };
-      P.kills = 0; P.streak = 0;
+      P.kills = 0; P.deaths = 0; P.streak = 0; P.lostLoadout = false; P.deadHandled = false;
       P.hud.attach(); P.hud.show(); P.hud.setMap(this.world.boxes, this.mapInfo.bounds);
-      P.hud.setKills(0); P.hud.setMoney(P.money); P.hud.setStreak(0);
+      P.hud.setMoney(P.money); P.hud.setStreak(0);
+      P.hud.setMatchScore(0, 0, this._humanSide());
     }
     this.audio.startAmbient();
     this.nextRound();
   }
 
+  // Back-compat shim (older callers/tests pass just a player count).
+  startGame(numPlayers = 1, teamSize) { this.startMatch(numPlayers, teamSize != null ? teamSize : numPlayers); }
+
   nextRound() {
     this.round++;
     this.menus.hideAll(); this.menus.hideLock();
-    // spawn + heal + loadout each player
-    const spawns = this._pickPlayerSpawns();
+
+    const secondHalf = this._isSecondHalf();
+    const halftime = (this.round === HALF_ROUNDS + 1);
+    const pistolRound = (this.round === 1 || this.round === HALF_ROUNDS + 1);
+    if (halftime) {                       // side swap → economy reset
+      for (const P of this.players) {
+        P.money = MONEY_START; P.owned.primary = null; P.owned.armor = 0; P.owned.helmet = false; P.lostLoadout = false;
+      }
+      this.lossStreak = [0, 0];
+    }
+
+    this.enemyMgr.clearAll();
+
+    // place humans (team 0) at their side spawns
+    const team0Side = this._sideOfTeam(0), team1Side = this._sideOfTeam(1);
+    const team0Spawns = this._sideSpawns(team0Side);
     this.players.forEach((P, i) => {
-      P.ent.reset(spawns[i]);
+      const sp = team0Spawns[i % team0Spawns.length].clone();
+      sp.y = this.world.groundHeight(sp.x, sp.z, 30);
+      P.ent.reset(sp);
+      P.ent.team = 0;
       P.ent.setLookFrom(new THREE.Vector3(0, 1.6, 0));
+      if (P.lostLoadout) { P.owned.primary = null; P.owned.armor = 0; P.owned.helmet = false; }
+      P.lostLoadout = false;
       P.ent.armor = P.owned.armor;
       P.ent._updateCamera(0.016);
       P.deadHandled = false;
       this._applyOwned(P, true);
       P.weapons.setBaseFov(this.menus.settings.fov);
       P.hud.setRound(this.round); P.hud.setMoney(P.money);
+      P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide());
+      P.hud.setHalf(secondHalf ? '2ND' : '1ST');
     });
 
-    const diff = this._difficulty(this.round);
-    this._spawnWave(diff);
-    for (const P of this.players) P.hud.setEnemies(this.enemyMgr.aliveCount);
+    // fill both teams with bots; both push a single contested site so they clash
+    const sites = this.mapInfo.sites;
+    this._focusSite = (Math.random() < 0.5 ? sites.A : sites.B).center;
+    this._spawnBots(this.teamSize - this.numHumans, 0, team0Side, true, pistolRound, this.numHumans, this._focusSite);
+    this._spawnBots(this.teamSize, 1, team1Side, false, pistolRound, 0, this._focusSite);
+
+    this.combat.setCombatants(this._allCombatants());
+    for (const P of this.players) P.hud.setAlive(this._teamAlive(this._teamForSide('CT')), this._teamAlive(this._teamForSide('T')));
 
     this._roundStart = performance.now();
     this._freezeEnd = performance.now() + this.freezeDuration * 1000;
     this._buyEnd = this._freezeEnd; this.frozen = true;
+    this._liveEnd = this._freezeEnd + ROUND_TIME * 1000;   // round clock starts after freeze
+    this._endDelay = 0; this._roundResolved = false;
     this.audio.stinger('roundstart');
-    this._endDelay = 0;
+    if (halftime) for (const P of this.players) P.hud.announce('SWITCHING SIDES', `YOU ARE NOW ${this._humanSide()}`, 2400, '#e7c878');
     this.openBuyAll(true);
   }
 
-  _endRoundWin() {
+  _resolveRound(winner) {
+    this._roundResolved = true;
     this.state = 'roundend';
-    this.audio.stinger('win');
-    const bonus = 2000 + (this.round - 1) * 300;
+    this.wins[winner]++;
+    const loser = winner === 0 ? 1 : 0;
+    this.lossStreak[winner] = 0;
+    this.lossStreak[loser] = Math.min(5, this.lossStreak[loser] + 1);
+
+    // economy: round-win bonus vs escalating loss bonus, plus survival of equipment
+    const winReward = 3250, lossReward = 1400 + 500 * (this.lossStreak[loser] - 1);
     for (const P of this.players) {
-      if (P.ent.alive) { P.money = Math.min(MONEY_MAX, P.money + bonus); P.hud.setMoney(P.money); }
-      P.hud.announce('ROUND CLEARED', P.ent.alive ? `+$${bonus}` : 'RESPAWNING…', 1800, '#36c46a');
+      const reward = (P.ent.team === winner) ? winReward : lossReward;
+      P.money = Math.min(MONEY_MAX, P.money + reward); P.hud.setMoney(P.money);
+      if (!P.ent.alive) P.lostLoadout = true;   // dead players re-buy next round
     }
-    this._roundCountdown = 7;
-    const P0 = this.players[0];
+
+    const winSide = this._sideOfTeam(winner);
+    this.audio.stinger(winner === 0 ? 'win' : 'lose');
+    for (const P of this.players) {
+      const won = P.ent.team === winner;
+      P.hud.announce(won ? 'ROUND WON' : 'ROUND LOST', `${winSide} ELIMINATED THE ENEMY`, 2000, won ? '#36c46a' : '#e0413a');
+      P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide());
+    }
+
+    if (this.wins[winner] >= CLINCH || this.round >= MAX_ROUNDS) { this._matchOver(); return; }
+
+    this._roundCountdown = 6;
     this.menus.showRound({
-      title: `ROUND ${this.round} CLEARED`, sub: `Reward +$${bonus}`,
+      title: `${winSide} WIN — ROUND ${this.round}`,
+      sub: `MATCH  CT ${this._ctWins()} : ${this._tWins()} T`,
       stats: [
-        { v: this.round, l: 'ROUND' },
-        { v: this.totalKills, l: 'TOTAL KILLS' },
+        { v: `${this._ctWins()} : ${this._tWins()}`, l: 'CT : T' },
+        { v: `${this.round}/${MAX_ROUNDS}`, l: 'ROUND' },
+        { v: `${this.teamSize}v${this.teamSize}`, l: 'FORMAT' },
         { v: this.players.map(p => '$' + p.money).join('  '), l: 'BALANCE' },
-        { v: this.numPlayers, l: 'PLAYERS' },
       ],
     });
     this._unlockMice();
-    for (const P of this.players) P.kills = 0;
   }
 
-  _gameOver() { this.state = 'dead'; this._deathTimer = 1.8; }
-
-  _showGameOver() {
-    this.audio.stinger('lose'); this.audio.stopAmbient();
+  _matchOver() {
+    this.state = 'matchover';
+    const draw = this.wins[0] === this.wins[1];
+    const won = this.wins[0] > this.wins[1];
+    this.audio.stinger(draw ? 'roundstart' : (won ? 'win' : 'lose'));
+    this.audio.stopAmbient();
     this.menus.showGameOver({
-      title: this.numPlayers > 1 ? 'SQUAD ELIMINATED' : 'YOU WERE ELIMINATED',
+      title: draw ? 'MATCH DRAWN' : (won ? 'VICTORY' : 'DEFEAT'),
       stats: [
-        { v: this.round, l: 'REACHED ROUND' },
-        { v: this.totalKills, l: 'TOTAL KILLS' },
-        { v: this.players.map(p => p.kills).join(' / '), l: 'KILLS' },
-        { v: this.numPlayers, l: 'PLAYERS' },
+        { v: `${this.wins[0]} : ${this.wins[1]}`, l: 'YOUR TEAM : ENEMY' },
+        { v: `${this.teamSize}v${this.teamSize}`, l: 'FORMAT' },
+        { v: this.totalKills, l: 'TEAM KILLS' },
+        { v: this.players.map(p => `${p.kills}/${p.deaths}`).join('  '), l: 'K / D' },
       ],
     });
     this._unlockMice();
@@ -268,73 +355,55 @@ export class Game {
   }
   _unlockMice() { for (const P of this.players) if (P.input.exitLock) P.input.exitLock(); }
 
-  /* --------------------------- difficulty / spawns --------------------------- */
+  /* --------------------------- bot loadouts / spawns --------------------------- */
 
-  _difficulty(round) {
-    const t = Math.min(1, (round - 1) / 9);
-    const accuracy = lerp(0.34, 0.82, t);
-    return {
-      count: Math.min(3 + Math.ceil(round * 1.25) + (this.numPlayers - 1) * 2, 16),
-      health: Math.round(lerp(90, 150, t)), accuracy,
-      reaction: lerp(0.55, 0.14, t), moveSpeed: lerp(3.0, 4.3, t),
-      turnSpeed: lerp(2.6, 5.4, t), viewDist: lerp(42, 74, t),
-      hearing: lerp(16, 30, t), memory: lerp(2.2, 4.0, t), strafe: 0.55,
-      damageMult: lerp(0.6, 1.05, t), baseSpread: lerp(0.14, 0.02, accuracy),
-      pool: this._enemyPool(round), round,
-    };
-  }
-  _enemyPool(round) {
-    if (round <= 1) return ['glock', 'mp5'];
-    if (round <= 3) return ['mp5', 'glock', 'ak47'];
-    if (round <= 5) return ['ak47', 'm4', 'mp5'];
-    return ['ak47', 'm4', 'awp', 'shotgun', 'mp5', 'deagle'];
-  }
   _prefRange(type) { return { sniper: 34, rifle: 16, smg: 9, shotgun: 6, pistol: 11, melee: 2 }[type] || 14; }
 
-  _spawnWave(diff) {
-    const colors = [0x555a48, 0x4a4234, 0x5a5040, 0x3f4636];
-    const used = [];
-    for (let i = 0; i < diff.count; i++) {
-      const pos = this._pickEnemySpawn(used); used.push(pos);
-      const wkey = diff.pool[(Math.random() * diff.pool.length) | 0];
-      const wpn = WEAPONS[wkey];
-      this.enemyMgr.spawn(pos, {
-        health: diff.health, accuracy: diff.accuracy, reaction: diff.reaction,
-        moveSpeed: diff.moveSpeed, turnSpeed: diff.turnSpeed, viewDist: diff.viewDist,
-        hearing: diff.hearing, memory: diff.memory, strafe: diff.strafe, damageMult: diff.damageMult,
-        spread: diff.baseSpread * (wpn.type === 'sniper' ? 0.45 : wpn.type === 'shotgun' ? 1.6 : 1),
-        preferredRange: this._prefRange(wpn.type), weapon: wpn,
-        color: colors[(Math.random() * colors.length) | 0],
-      });
+  _botWeapon(pistolRound) {
+    if (pistolRound) return Math.random() < 0.28 ? 'p250' : 'glock';
+    const r = Math.random();
+    if (r < 0.1) return 'awp';
+    if (r < 0.2) return 'shotgun';
+    if (r < 0.32) return 'mp5';
+    return ['ak47', 'm4', 'ak47', 'm4'][(Math.random() * 4) | 0];
+  }
+
+  // Fixed-skill bots (medium). `friendly` controls blue/red readability + side tint.
+  _botConfig(wkey, team, friendly, side, objective) {
+    const wpn = WEAPONS[wkey];
+    const t = 0.62;                                   // fixed skill
+    const accuracy = lerp(0.34, 0.82, t);
+    const CT = [0x8c98a6, 0x76828f, 0x6b7886];     // CT-side fatigue tints
+    const T = [0x6e5a3a, 0x7a6038, 0x5f5030];      // T-side fatigue tints
+    const tint = (side === 'CT' ? CT : T);
+    return {
+      health: 100, accuracy,
+      reaction: lerp(0.55, 0.16, t), moveSpeed: lerp(3.0, 4.2, t),
+      turnSpeed: lerp(2.6, 5.2, t), viewDist: lerp(46, 72, t),
+      hearing: lerp(18, 30, t), memory: lerp(2.4, 4.0, t), strafe: 0.55,
+      damageMult: 1.0,
+      spread: lerp(0.13, 0.02, accuracy) * (wpn.type === 'sniper' ? 0.45 : wpn.type === 'shotgun' ? 1.6 : 1),
+      preferredRange: this._prefRange(wpn.type), weapon: wpn,
+      team, friendly, name: friendly ? 'ALLY' : 'ENEMY',
+      objective: objective ? objective.clone() : null,
+      color: tint[(Math.random() * tint.length) | 0],
+    };
+  }
+
+  _spawnBots(count, team, side, friendly, pistolRound, startIndex = 0, objective = null) {
+    if (count <= 0) return;
+    const spawns = this._sideSpawns(side);
+    for (let i = 0; i < count; i++) {
+      const base = spawns[(startIndex + i) % spawns.length].clone();
+      base.x += (Math.random() - 0.5) * 2.5; base.z += (Math.random() - 0.5) * 2.5;
+      base.y = this.world.groundHeight(base.x, base.z, 30);
+      const cfg = this._botConfig(this._botWeapon(pistolRound), team, friendly, side, objective);
+      this.enemyMgr.spawn(base, cfg);
     }
   }
 
-  _pickPlayerSpawns() {
-    const arr = this.mapInfo.spawnsCT.slice();
-    const out = [];
-    for (let i = 0; i < this.numPlayers; i++) {
-      const p = (arr[i % arr.length] || arr[0]).clone();
-      p.y = this.world.groundHeight(p.x, p.z, 30); out.push(p);
-    }
-    return out;
-  }
-  _minDistToPlayers(pos) {
-    let d = Infinity; for (const P of this.players) d = Math.min(d, pos.distanceTo(P.ent.position)); return d;
-  }
-  _pickEnemySpawn(used) {
-    const candidates = this.mapInfo.spawnsT.slice();
-    for (let i = 0; i < 6; i++) candidates.push(this.nav.randomPoint());
-    let best = null, bestScore = -Infinity;
-    for (const c of candidates) {
-      const cc = c.clone(); cc.y = this.world.groundHeight(cc.x, cc.z, 30);
-      const dPlayer = this._minDistToPlayers(cc);
-      if (dPlayer < 18) continue;
-      let dUsed = Infinity; for (const u of used) dUsed = Math.min(dUsed, cc.distanceTo(u));
-      const score = dPlayer + dUsed * 1.5 + Math.random() * 6;
-      if (score > bestScore) { bestScore = score; best = cc; }
-    }
-    if (!best) { best = this.mapInfo.spawnsT[0].clone(); best.y = this.world.groundHeight(best.x, best.z, 30); }
-    return best;
+  _sideSpawns(side) {
+    return (side === 'CT' ? this.mapInfo.spawnsCT : this.mapInfo.spawnsT).slice();
   }
 
   _zoneName(p) {
@@ -353,6 +422,8 @@ export class Game {
     if (this.state === 'buy') {
       if (this.frozen && performance.now() >= this._freezeEnd) this.frozen = false;
       for (const P of this.players) { P.input.update?.(dt); if (P.buyOpen) P.buyMenu.update(); P.input.endFrame?.(); }
+      // buy/freeze time over → auto-deploy anyone still in the menu so the round can start
+      if (!this.canBuy()) for (const P of this.players) if (P.buyOpen) this.closeBuy(P);
       this.fx.update(dt);
       return;
     }
@@ -360,53 +431,60 @@ export class Game {
     if (this.state === 'playing') {
       if (this.frozen && performance.now() >= this._freezeEnd) {
         this.frozen = false;
-        for (const P of this.players) { P.hud.setFreeze(0); P.hud.announce('GO!', 'ROUND LIVE', 800, '#36c46a'); }
+        for (const P of this.players) { P.hud.setFreeze(0); P.hud.announce('GO!', '', 700, '#36c46a'); }
         this.audio.stinger('roundstart');
       }
-      // per-player update
       for (const P of this.players) {
         P.input.update?.(dt);
-        // a player who pressed buy reopens their menu
         if (this.frozen && P.input.pressed && P.input.pressed('KeyB') && !P.buyOpen) this.openBuy(P);
         if (!P.ent.alive) {
-          if (!P.deadHandled) { P.deadHandled = true; P.hud.announce('ELIMINATED', 'Respawn next round', 2200, '#e0413a'); }
-          P.ent.update(dt, {}); // keep falling camera
+          if (!P.deadHandled) {
+            P.deadHandled = true; P.deaths++; P.streak = 0; P.hud.setStreak(0);
+            P.hud.announce('ELIMINATED', 'Spectating — round in progress', 2000, '#e0413a');
+          }
+          P.ent.update(dt, {});      // keep falling camera
           continue;
         }
         const aiming = P.weapons.adsAmount > 0.3 || P.weapons.scoped;
         P.ent.update(dt, { aiming, frozen: this.frozen });
         const speed01 = Math.min(1, Math.hypot(P.ent.vel.x, P.ent.vel.z) / P.ent.runSpeed);
         P.weapons.update(dt, speed01, !P.ent.onGround, this.frozen);
-        // HUD
         P.hud.setHealth(P.ent.health); P.hud.setArmor(P.ent.armor);
-        P.hud.setTimer((performance.now() - (this._roundStart || performance.now())) / 1000);
+        const remain = this.frozen ? Math.max(0, (this._freezeEnd - performance.now()) / 1000)
+                                   : Math.max(0, (this._liveEnd - performance.now()) / 1000);
+        P.hud.setTimer(remain);
         P.hud.setCrosshair(P.weapons.inaccuracy, P.camera.fov);
         P.hud.updateRadar(P.ent, this.enemyMgr.enemies, this.mapInfo.sites);
-        P.hud.setEnemies(this.enemyMgr.aliveCount);
         P.hud.setLocation(this._zoneName(P.ent.feet));
         if (this.frozen) P.hud.setFreeze(Math.max(0, (this._freezeEnd - performance.now()) / 1000));
       }
       this.audio.setListener(this.players[0].camera);
-      if (!this.frozen) { this.enemyMgr.update(dt, this.players.map(p => p.ent)); this._maybePickup(); }
+      if (!this.frozen) { this.enemyMgr.update(dt, this._allCombatants()); this._maybePickup(); }
+      const ctAlive = this._teamAlive(this._teamForSide('CT')), tAlive = this._teamAlive(this._teamForSide('T'));
+      for (const P of this.players) { P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide()); P.hud.setAlive(ctAlive, tAlive); }
       for (const P of this.players) P.input.endFrame?.();
 
-      // round end / game over
-      if (this.enemyMgr.aliveCount === 0) {
-        this._endDelay += dt;
-        if (this._endDelay > 1.2) this._endRoundWin();
+      // round resolution: a whole team wiped → the other team scores
+      if (!this._roundResolved && !this.frozen) {
+        const a0 = this._teamAlive(0), a1 = this._teamAlive(1);
+        let winner = -1;
+        if (a1 === 0 && a0 > 0) winner = 0;
+        else if (a0 === 0 && a1 > 0) winner = 1;
+        else if (a0 === 0 && a1 === 0) winner = 0;       // simultaneous (rare) → CT-team
+        if (winner >= 0) { this._endDelay += dt; if (this._endDelay > 1.0) this._resolveRound(winner); }
+        else if (performance.now() >= this._liveEnd) this._resolveRound(this._teamForSide('CT')); // time up → defenders hold
+        else this._endDelay = 0;
       }
-      if (this.players.every(P => !P.ent.alive)) this._gameOver();
 
     } else if (this.state === 'roundend') {
-      this.enemyMgr.update(dt, this.players.map(p => p.ent));
+      this.enemyMgr.update(dt, []);     // freeze bot fire, keep death anims / idle
+      for (const P of this.players) P.ent.update(dt, { frozen: P.ent.alive });
       this._roundCountdown -= dt;
       this.menus.updateRoundCountdown(Math.max(0, Math.ceil(this._roundCountdown)));
       if (this._roundCountdown <= 0) this.nextRound();
-    } else if (this.state === 'dead') {
+    } else if (this.state === 'matchover') {
+      this.enemyMgr.update(dt, []);
       for (const P of this.players) P.ent.update(dt, {});
-      this.enemyMgr.update(dt, this.players.map(p => p.ent));
-      this._deathTimer -= dt;
-      if (this._deathTimer <= 0) { this._deathTimer = 1e9; this._showGameOver(); }
     }
 
     this.fx.update(dt);

@@ -17,6 +17,7 @@ export class Menus {
     this.callbacks = {};
     this.ov = {
       menu: document.getElementById('menu'),
+      setup: document.getElementById('setup'),
       briefing: document.getElementById('briefing'),
       settings: document.getElementById('settings'),
       pause: document.getElementById('pause'),
@@ -95,6 +96,16 @@ export class Menus {
     set('set-quality', s.quality);
     set('set-bloom', s.bloom);
     set('set-invert', s.invertY);
+  }
+
+  // Show the team-size picker; disable formats smaller than the human count.
+  showSetup(minSize) {
+    document.querySelectorAll('.size-btn').forEach((b) => {
+      const s = parseInt(b.dataset.size, 10);
+      const off = s < minSize;
+      b.disabled = off; b.classList.toggle('disabled', off);
+    });
+    this.show('setup');
   }
 
   flashHint(msg) {
