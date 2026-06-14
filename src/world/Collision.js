@@ -90,26 +90,33 @@ export class CollisionWorld {
       a.min.y < b.max.y && a.max.y > b.min.y &&
       a.min.z < b.max.z && a.max.z > b.min.z;
 
-    // X axis
-    aabb.min.x += disp.x; aabb.max.x += disp.x;
-    for (const b of cand) {
-      if (!overlap(aabb, b)) continue;
-      if (disp.x > 0) { const d = b.min.x - aabb.max.x; aabb.min.x += d; aabb.max.x += d; }
-      else if (disp.x < 0) { const d = b.max.x - aabb.min.x; aabb.min.x += d; aabb.max.x += d; }
-    }
-    // Z axis
-    aabb.min.z += disp.z; aabb.max.z += disp.z;
-    for (const b of cand) {
-      if (!overlap(aabb, b)) continue;
-      if (disp.z > 0) { const d = b.min.z - aabb.max.z; aabb.min.z += d; aabb.max.z += d; }
-      else if (disp.z < 0) { const d = b.max.z - aabb.min.z; aabb.min.z += d; aabb.max.z += d; }
-    }
-    // Y axis
-    aabb.min.y += disp.y; aabb.max.y += disp.y;
-    for (const b of cand) {
-      if (!overlap(aabb, b)) continue;
-      if (disp.y <= 0) { const d = b.max.y - aabb.min.y; aabb.min.y += d; aabb.max.y += d; onGround = true; surface = b.surface; }
-      else { const d = b.min.y - aabb.max.y; aabb.min.y += d; aabb.max.y += d; ceiling = true; }
+    // Substep so fast moves can't tunnel through thin walls/crates.
+    const maxComp = Math.max(Math.abs(disp.x), Math.abs(disp.y), Math.abs(disp.z));
+    const steps = Math.max(1, Math.ceil(maxComp / 0.4));
+    const sx = disp.x / steps, sy = disp.y / steps, sz = disp.z / steps;
+
+    for (let s = 0; s < steps; s++) {
+      // X axis
+      aabb.min.x += sx; aabb.max.x += sx;
+      for (const b of cand) {
+        if (!overlap(aabb, b)) continue;
+        if (sx > 0) { const d = b.min.x - aabb.max.x; aabb.min.x += d; aabb.max.x += d; }
+        else if (sx < 0) { const d = b.max.x - aabb.min.x; aabb.min.x += d; aabb.max.x += d; }
+      }
+      // Z axis
+      aabb.min.z += sz; aabb.max.z += sz;
+      for (const b of cand) {
+        if (!overlap(aabb, b)) continue;
+        if (sz > 0) { const d = b.min.z - aabb.max.z; aabb.min.z += d; aabb.max.z += d; }
+        else if (sz < 0) { const d = b.max.z - aabb.min.z; aabb.min.z += d; aabb.max.z += d; }
+      }
+      // Y axis
+      aabb.min.y += sy; aabb.max.y += sy;
+      for (const b of cand) {
+        if (!overlap(aabb, b)) continue;
+        if (sy <= 0) { const d = b.max.y - aabb.min.y; aabb.min.y += d; aabb.max.y += d; onGround = true; surface = b.surface; }
+        else { const d = b.min.y - aabb.max.y; aabb.min.y += d; aabb.max.y += d; ceiling = true; }
+      }
     }
 
     feet.set(aabb.min.x + half, aabb.min.y, aabb.min.z + half);

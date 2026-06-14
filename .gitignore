@@ -1,7 +1,10 @@
-node_modules/
+
 *.log
-.DS_Store
 *.tgz
-package/
-.vscode/
+.DS_Store
 .idea/
+.vscode/
+/root/.cache/
+node_modules/
+package/
+tools/shot*.png

@@ -49,6 +49,7 @@ export class Engine {
 
     this._buildLights();
     this._buildSky();
+    this._buildEnvironment();
     this._buildComposer();
     this._buildViewmodelLayer();
 
@@ -134,6 +135,24 @@ export class Engine {
     sky.frustumCulled = false;
     this.scene.add(sky);
     this.sky = sky;
+  }
+
+  // Prefilter the sky into an environment map (IBL). Gives metals (guns,
+  // barrels, the truck) and surfaces real reflections — the biggest lift
+  // from "hobby" to "AAA". Captured once at startup from the sky dome.
+  _buildEnvironment() {
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    pmrem.compileEquirectangularShader();
+    // Temporary scene holding just the sky dome for a clean capture.
+    const capScene = new THREE.Scene();
+    const skyClone = this.sky.clone();
+    skyClone.material = this.sky.material; // share shader
+    capScene.add(skyClone);
+    const rt = pmrem.fromScene(capScene, 0.04, 0.1, 2000);
+    this.scene.environment = rt.texture;
+    this.envMap = rt.texture;
+    if ('environmentIntensity' in this.scene) this.scene.environmentIntensity = 0.85;
+    pmrem.dispose();
   }
 
   _buildComposer() {

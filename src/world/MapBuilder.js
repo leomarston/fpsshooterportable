@@ -20,6 +20,7 @@
  */
 import * as THREE from 'three';
 import { Box } from './Collision.js';
+import { roundedBox } from '../core/Geo.js';
 
 const WALL_H = 6;
 const DOOR_H = 3.4;
@@ -137,8 +138,13 @@ export class MapBuilder {
   crate(cx, cz, size = 2, y = null, mat = null) {
     const s = size;
     const baseY = y ?? this.world.groundHeight(cx, cz, 30);
-    this.box(cx, baseY + s / 2, cz, s, s, s, mat || this.forge.wood(1),
-      { surface: 'wood' });
+    // beveled visual mesh (edges catch light) + AABB collider
+    const mesh = new THREE.Mesh(roundedBox(s, s, s, s * 0.04, 3), mat || this.forge.wood(1));
+    mesh.position.set(cx, baseY + s / 2, cz);
+    mesh.rotation.y = (Math.random() - 0.5) * 0.12;
+    mesh.castShadow = mesh.receiveShadow = true;
+    this.group.add(mesh);
+    this.world.add(Box.fromCenter(cx, baseY + s / 2, cz, s, s, s, 'wood', true, true));
     return baseY + s; // top height
   }
 

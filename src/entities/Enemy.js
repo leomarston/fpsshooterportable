@@ -9,6 +9,7 @@
  * reaction time and recoil. Bullets are hitscan and respect cover.
  */
 import * as THREE from 'three';
+import { roundedBox, capsule } from '../core/Geo.js';
 
 const EYE = 1.55, HEIGHT = 1.75, RADIUS = 0.4;
 
@@ -54,43 +55,99 @@ export class Enemy {
   _build() {
     const g = new THREE.Group();
     this.group = g;
-    const skin = new THREE.MeshStandardMaterial({ color: 0x8a6a48, roughness: 0.7, metalness: 0.1 });
-    const cloth = new THREE.MeshStandardMaterial({ color: this.cfg.color || 0x4a4f45, roughness: 0.85 });
-    const vest = new THREE.MeshStandardMaterial({ color: 0x2b2e2a, roughness: 0.7, metalness: 0.2 });
-    const accent = new THREE.MeshStandardMaterial({ color: 0xb83a2e, roughness: 0.6, emissive: 0x551109, emissiveIntensity: 0.4 }); // red = hostile readability
-    const gunMat = new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.5, metalness: 0.6 });
+    const env = 1.0;
+    const skin = new THREE.MeshStandardMaterial({ color: 0x9c7a55, roughness: 0.62, metalness: 0.0 });
+    const clothCol = this.cfg.color || 0x555a48;
+    const cloth = new THREE.MeshStandardMaterial({ color: clothCol, roughness: 0.85, metalness: 0.05, envMapIntensity: env });
+    const clothDark = new THREE.MeshStandardMaterial({ color: 0x3a3e30, roughness: 0.8, metalness: 0.05 });
+    const vest = new THREE.MeshStandardMaterial({ color: 0x262922, roughness: 0.55, metalness: 0.3, envMapIntensity: env });
+    const rubber = new THREE.MeshStandardMaterial({ color: 0x14140f, roughness: 0.8, metalness: 0.1 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0xc23a2c, roughness: 0.5, metalness: 0.2, emissive: 0x4a0e07, emissiveIntensity: 0.5 }); // red = hostile readability
+    const gunMat = new THREE.MeshStandardMaterial({ color: 0x17191d, roughness: 0.45, metalness: 0.65, envMapIntensity: env });
+    const glove = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.7, metalness: 0.1 });
 
-    const mk = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+    const add = (mesh, parent = g) => { mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh; };
+    const M = (geo, mat) => new THREE.Mesh(geo, mat);
 
-    // legs
-    this.legL = mk(new THREE.BoxGeometry(0.18, 0.8, 0.22), cloth, -0.12, 0.4, 0);
-    this.legR = mk(new THREE.BoxGeometry(0.18, 0.8, 0.22), cloth, 0.12, 0.4, 0);
-    // torso
-    this.torso = mk(new THREE.BoxGeometry(0.5, 0.62, 0.3), vest, 0, 1.12, 0);
-    mk(new THREE.BoxGeometry(0.52, 0.2, 0.32), accent, 0, 1.34, 0); // chest rig band
-    // shoulders/arms
-    this.armL = mk(new THREE.BoxGeometry(0.15, 0.5, 0.16), cloth, -0.33, 1.15, 0.05);
-    this.armR = mk(new THREE.BoxGeometry(0.15, 0.5, 0.16), cloth, 0.33, 1.15, 0.05);
-    // head
-    this.head = mk(new THREE.BoxGeometry(0.28, 0.3, 0.28), skin, 0, 1.62, 0);
-    mk(new THREE.BoxGeometry(0.3, 0.14, 0.3), vest, 0, 1.74, 0);   // helmet
-    mk(new THREE.BoxGeometry(0.26, 0.07, 0.05), accent, 0, 1.62, 0.15); // red visor
-    // gun in hands (points -z, toward facing)
+    // ---------- legs (groups pivot at the hip) ----------
+    const buildLeg = (side) => {
+      const leg = new THREE.Group();
+      leg.position.set(0.13 * side, 0.92, 0);
+      const thigh = add(M(capsule(0.13, 0.34, 6, 12), cloth), leg); thigh.position.y = -0.28;
+      const knee = add(M(new THREE.SphereGeometry(0.12, 12, 10), clothDark), leg); knee.position.y = -0.5;
+      const shin = add(M(capsule(0.11, 0.32, 6, 12), clothDark), leg); shin.position.y = -0.7;
+      const boot = add(M(roundedBox(0.18, 0.18, 0.34, 0.06), rubber), leg); boot.position.set(0, -0.9, 0.05);
+      // knee pad
+      const pad = add(M(roundedBox(0.16, 0.16, 0.05, 0.04), clothDark), leg); pad.position.set(0, -0.5, 0.11);
+      g.add(leg); return leg;
+    };
+    this.legL = buildLeg(-1);
+    this.legR = buildLeg(1);
+
+    // ---------- pelvis + belt ----------
+    add(M(roundedBox(0.42, 0.26, 0.3, 0.1), clothDark)).position.set(0, 0.98, 0);
+    const belt = add(M(new THREE.TorusGeometry(0.22, 0.045, 8, 20), vest)); belt.rotation.x = Math.PI / 2; belt.position.y = 0.92; belt.scale.z = 0.72;
+
+    // ---------- torso ----------
+    this.torso = add(M(capsule(0.22, 0.34, 8, 16), cloth)); this.torso.position.y = 1.2; this.torso.scale.set(1.05, 1, 0.72);
+    // tactical vest shell
+    const vestShell = add(M(roundedBox(0.5, 0.5, 0.34, 0.1), vest)); vestShell.position.set(0, 1.22, 0.01);
+    // chest pouches
+    for (const px of [-0.13, 0.13]) { const p = add(M(roundedBox(0.13, 0.16, 0.08, 0.03), clothDark)); p.position.set(px, 1.12, 0.2); }
+    // red readability stripe + collar
+    const stripe = add(M(roundedBox(0.52, 0.07, 0.36, 0.03), accent)); stripe.position.set(0, 1.38, 0);
+    add(M(new THREE.CylinderGeometry(0.1, 0.12, 0.12, 12), skin)).position.set(0, 1.5, 0); // neck
+    // backpack / radio
+    const pack = add(M(roundedBox(0.32, 0.34, 0.16, 0.06), clothDark)); pack.position.set(0, 1.2, -0.22);
+    const antenna = add(M(new THREE.CylinderGeometry(0.008, 0.008, 0.4, 6), gunMat)); antenna.position.set(0.12, 1.5, -0.26);
+
+    // ---------- shoulders + arms ----------
+    const buildArm = (side) => {
+      const arm = new THREE.Group();
+      arm.position.set(0.3 * side, 1.42, 0);
+      const shoulder = add(M(new THREE.SphereGeometry(0.14, 12, 10), cloth), arm); shoulder.position.y = 0.02;
+      const upper = add(M(capsule(0.1, 0.22, 6, 12), cloth), arm); upper.position.y = -0.18;
+      const elbow = add(M(new THREE.SphereGeometry(0.095, 10, 8), clothDark), arm); elbow.position.y = -0.36;
+      const fore = add(M(capsule(0.085, 0.2, 6, 12), clothDark), arm); fore.position.y = -0.5;
+      const hand = add(M(new THREE.SphereGeometry(0.085, 10, 8), glove), arm); hand.position.y = -0.66;
+      // shoulder pad
+      const pad = add(M(roundedBox(0.18, 0.12, 0.2, 0.05), vest), arm); pad.position.set(0.02 * side, 0.04, 0);
+      if (side < 0) { const band = add(M(new THREE.TorusGeometry(0.1, 0.025, 8, 16), accent), arm); band.position.y = -0.18; band.rotation.y = Math.PI / 2; } // red armband on left
+      g.add(arm); return arm;
+    };
+    this.armL = buildArm(-1);
+    this.armR = buildArm(1);
+
+    // ---------- head + helmet ----------
+    this.head = add(M(new THREE.SphereGeometry(0.135, 16, 14), skin)); this.head.position.y = 1.63; this.head.scale.set(0.92, 1.05, 1.0);
+    const helmet = add(M(new THREE.SphereGeometry(0.155, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), vest));
+    helmet.position.y = 1.66;
+    const helmRim = add(M(new THREE.TorusGeometry(0.15, 0.022, 8, 18), clothDark)); helmRim.rotation.x = Math.PI / 2; helmRim.position.y = 1.62;
+    // NVG mount + red visor (readability)
+    add(M(roundedBox(0.07, 0.06, 0.07, 0.02), clothDark)).position.set(0, 1.72, 0.12);
+    const visor = add(M(roundedBox(0.2, 0.05, 0.04, 0.02), accent)); visor.position.set(0, 1.62, 0.13);
+    // ear cups
+    for (const s of [-1, 1]) add(M(new THREE.SphereGeometry(0.05, 10, 8), clothDark)).position.set(0.135 * s, 1.62, 0);
+
+    // ---------- weapon in hands ----------
     this.gun = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.5), gunMat); body.castShadow = true; this.gun.add(body);
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 8), gunMat); bar.rotation.x = Math.PI / 2; bar.position.z = -0.34; this.gun.add(bar);
-    this.gun.position.set(0.3, 1.18, -0.2);
+    add(M(roundedBox(0.08, 0.11, 0.46, 0.03), gunMat), this.gun);                   // receiver
+    const handg = add(M(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 10), gunMat), this.gun); handg.rotation.x = Math.PI / 2; handg.position.z = -0.28;
+    const barrel = add(M(new THREE.CylinderGeometry(0.016, 0.016, 0.16, 10), gunMat), this.gun); barrel.rotation.x = Math.PI / 2; barrel.position.z = -0.42;
+    const mag = add(M(roundedBox(0.05, 0.2, 0.09, 0.02), gunMat), this.gun); mag.position.set(0, -0.13, 0.02); mag.rotation.x = 0.4;
+    const stock = add(M(roundedBox(0.05, 0.08, 0.18, 0.03), gunMat), this.gun); stock.position.z = 0.28;
+    this.gun.position.set(0.26, 1.2, -0.18);
     g.add(this.gun);
-    this.muzzle = new THREE.Object3D(); this.muzzle.position.set(0, 0, -0.45); this.gun.add(this.muzzle);
+    this.muzzle = new THREE.Object3D(); this.muzzle.position.set(0, 0, -0.5); this.gun.add(this.muzzle);
 
     // muzzle flash
-    this.flash = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6),
+    this.flash = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xffe0a0, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
-    this.flash.visible = false; this.gun.add(this.flash); this.flash.position.set(0, 0, -0.5);
+    this.flash.visible = false; this.gun.add(this.flash); this.flash.position.set(0, 0, -0.52);
 
     // health bar billboard
     this.hpBar = this._makeHpBar();
-    this.hpBar.position.set(0, 2.05, 0);
+    this.hpBar.position.set(0, 2.08, 0);
     g.add(this.hpBar);
     this.hpBarTime = 0;
 
