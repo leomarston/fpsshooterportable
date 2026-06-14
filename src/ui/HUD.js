@@ -6,6 +6,53 @@
  *   • health + armor (icon, number, bar)                      — bottom-left
  *   • weapon, ammo clip/reserve, bullet ticks                 — bottom-right
  */
+// White weapon silhouettes (CS:GO shows an icon, not text).
+export function weaponIcon(kind) {
+  const wrap = (p) => `<svg viewBox="0 0 140 48" preserveAspectRatio="xMidYMid meet"><g fill="currentColor">${p}</g></svg>`;
+  switch (kind) {
+    case 'rifle_ak': return wrap(`
+      <rect x="8" y="20" width="20" height="9"/><polygon points="8,20 16,33 8,31"/>
+      <rect x="26" y="19" width="80" height="10"/>
+      <rect x="40" y="15" width="26" height="4"/>
+      <polygon points="56,29 76,29 71,43 60,43"/>
+      <polygon points="44,29 53,29 51,39 46,39"/>
+      <rect x="104" y="22" width="30" height="4"/><rect x="128" y="16" width="4" height="9"/>`);
+    case 'rifle_m4': return wrap(`
+      <rect x="8" y="21" width="20" height="8"/>
+      <rect x="26" y="19" width="82" height="10"/>
+      <rect x="40" y="14" width="34" height="3.5"/>
+      <rect x="56" y="29" width="12" height="14"/>
+      <polygon points="44,29 53,29 51,39 46,39"/>
+      <rect x="106" y="22" width="28" height="3.5"/><rect x="128" y="16" width="3.5" height="8"/>`);
+    case 'smg': return wrap(`
+      <rect x="24" y="21" width="16" height="7"/>
+      <rect x="38" y="20" width="58" height="9"/>
+      <rect x="58" y="29" width="9" height="15"/>
+      <polygon points="48,29 56,29 54,39 50,39"/>
+      <rect x="92" y="22" width="22" height="4"/>`);
+    case 'pistol': return wrap(`
+      <rect x="46" y="17" width="48" height="9"/>
+      <rect x="88" y="19" width="10" height="4"/>
+      <polygon points="52,26 70,26 65,43 56,43"/>`);
+    case 'sniper': return wrap(`
+      <rect x="8" y="23" width="16" height="6"/>
+      <rect x="20" y="22" width="100" height="6"/>
+      <rect x="116" y="23" width="18" height="3"/>
+      <rect x="58" y="13" width="38" height="5"/>
+      <rect x="62" y="10" width="6" height="4"/><rect x="86" y="10" width="6" height="4"/>
+      <polygon points="40,28 51,28 49,41 42,41"/>`);
+    case 'shotgun': return wrap(`
+      <rect x="8" y="21" width="16" height="8"/>
+      <rect x="24" y="20" width="84" height="8"/>
+      <rect x="58" y="28" width="42" height="4"/>
+      <rect x="104" y="21" width="30" height="3"/>`);
+    case 'knife': return wrap(`
+      <polygon points="44,32 98,16 104,21 52,36"/>
+      <rect x="30" y="28" width="16" height="9" rx="2"/>`);
+    default: return wrap(`<rect x="30" y="20" width="80" height="9"/>`);
+  }
+}
+
 export class HUD {
   constructor() {
     const $ = (id) => document.getElementById(id);
@@ -17,7 +64,8 @@ export class HUD {
       healthVal: $('health-val'), healthBar: $('health-bar'),
       armorVal: $('armor-val'), armorBar: $('armor-bar'),
       vitalHealth: document.querySelector('.vital.health'),
-      weaponName: $('weapon-name'), ammoMag: $('ammo-mag'), ammoReserve: $('ammo-reserve'),
+      weaponIcon: $('weapon-icon'), weaponName: $('weapon-name'),
+      ammoMag: $('ammo-mag'), ammoReserve: $('ammo-reserve'),
       ammoTicks: $('ammo-ticks'), reloadHint: $('reload-hint'), weaponSlots: $('weapon-slots'),
       moneyVal: $('money-val'), streak: $('streak-val'),
       radar: $('radar-canvas'), radarLoc: $('radar-loc'), announce: $('announce'),
@@ -47,6 +95,8 @@ export class HUD {
   }
 
   setAmmo(weapon, mag, reserve, reloading) {
+    const kind = weapon.view && weapon.view.kind;
+    if (kind !== this._iconKind) { this._iconKind = kind; this.el.weaponIcon.innerHTML = weaponIcon(kind); }
     this.el.weaponName.textContent = weapon.name;
     const inf = mag === Infinity;
     this.el.ammoMag.textContent = inf ? '∞' : mag;
@@ -77,7 +127,7 @@ export class HUD {
       const w = weaponsData[k];
       const div = document.createElement('div');
       div.className = 'wslot' + (k === current ? ' active' : '');
-      div.innerHTML = `<span class="k">${w.slot}</span> ${w.name}`;
+      div.innerHTML = weaponIcon(w.view && w.view.kind) + `<span class="k">${w.slot}</span>`;
       slots.appendChild(div);
     }
   }

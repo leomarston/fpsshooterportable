@@ -116,8 +116,10 @@ canvas#viewport{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-
 
 /* Ammo (bottom-right, CS:GO-style) */
 #ammo-block{position:absolute;right:30px;bottom:24px;text-align:right}
-#weapon-name{font-size:14px;letter-spacing:.2em;color:#fff;text-transform:uppercase;
-  margin-bottom:2px;text-shadow:0 1px 2px #000;opacity:.9}
+#weapon-icon{height:46px;margin-left:auto;margin-bottom:1px;display:flex;justify-content:flex-end}
+#weapon-icon svg{height:46px;width:auto;color:#fff;fill:#fff;filter:drop-shadow(0 2px 3px #000a)}
+#weapon-name{font-size:12px;letter-spacing:.2em;color:#ffffffcc;text-transform:uppercase;
+  margin-bottom:2px;text-shadow:0 1px 2px #000}
 #ammo-counts{display:flex;align-items:baseline;justify-content:flex-end;gap:5px}
 #ammo-mag{font-size:50px;font-weight:700;color:#fff;line-height:.85;font-variant-numeric:tabular-nums;
   text-shadow:0 2px 5px #000}
@@ -132,11 +134,13 @@ canvas#viewport{position:fixed;inset:0;width:100vw;height:100vh;display:block;z-
   animation:blink 1s step-start infinite}
 #reload-hint b{color:#fff}
 @keyframes blink{50%{opacity:.3}}
-#weapon-slots{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
-.wslot{display:flex;align-items:center;gap:6px;padding:3px 9px;background:#0c0a07aa;
-  border:1px solid var(--line);font-size:12px;color:var(--text-dim);letter-spacing:.06em}
-.wslot .k{color:var(--sand);font-weight:700}
-.wslot.active{border-color:var(--sand);background:#2a2317cc;color:#fff;box-shadow:0 0 8px #c2a05a44}
+#weapon-slots{display:flex;flex-direction:column;gap:5px;align-items:flex-end;margin-top:10px}
+.wslot{display:flex;align-items:center;gap:8px;padding:3px 8px;background:#0c0a0799;
+  border-right:2px solid #00000000;font-size:12px;color:#ffffff66;letter-spacing:.06em;min-width:96px;justify-content:flex-end}
+.wslot .k{color:#ffffff88;font-weight:700;font-size:11px;order:2}
+.wslot svg{height:15px;width:46px;fill:currentColor;order:1}
+.wslot.active{border-right-color:var(--sand);background:#2a2317cc;color:#fff}
+.wslot.active .k{color:var(--sand)}
 
 /* Radar / minimap (top-left, CS:GO-style square) */
 #radar{position:absolute;left:20px;top:16px;width:230px;height:230px}
