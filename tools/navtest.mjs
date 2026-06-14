@@ -19,7 +19,7 @@ try {
   await page.waitForFunction('window.__game && window.__game.built === true', { timeout: 40000 });
 
   const res = await page.evaluate(() => {
-    const g = window.__game; const Vec3 = g.player.feet.constructor;
+    const g = window.__game; const Vec3 = g.mapInfo.sites.A.center.constructor;
     // open-ground points (kept clear of props) representing each area
     const pts = {
       tSpawn: [0, -58], tMid: [0, -30], ctMid: [0, 6], long: [36, -25],
