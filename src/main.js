@@ -34,6 +34,7 @@ function applySettings(s, key) {
     const q = { high: 1.5, medium: 1.25, low: 1.0 }[s.quality] || 1.25;
     engine.renderer.setPixelRatio(Math.min(window.devicePixelRatio, q));
     engine.composer.setPixelRatio(Math.min(window.devicePixelRatio, q));
+    engine.setSSAO(s.quality !== 'low');
     engine.resize();
   }
 }

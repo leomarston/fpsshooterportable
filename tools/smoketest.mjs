@@ -16,6 +16,11 @@ try {
            '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--window-size=1280,720'],
   });
   const page = await browser.newPage();
+  // Low quality (no GTAO/bloom) keeps the software-GL test fast & reliable;
+  // mute audio. The showcase tool exercises the high-quality path.
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('desertstorm.settings.v1', JSON.stringify({ quality: 'low', bloom: false, volume: 0 }));
+  });
   await page.setViewport({ width: 1280, height: 720 });
   page.on('console', m => { if (m.type() === 'error') errors.push('console.error: ' + m.text()); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));

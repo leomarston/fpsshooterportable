@@ -11,12 +11,39 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 const QUALITY = {
-  high:   { pixelRatio: 1.5, shadowMap: 4096, bloom: true, fxaa: true, shadows: true },
-  medium: { pixelRatio: 1.25, shadowMap: 2048, bloom: true, fxaa: true, shadows: true },
-  low:    { pixelRatio: 1.0, shadowMap: 1024, bloom: false, fxaa: false, shadows: true },
+  high:   { pixelRatio: 1.5, shadowMap: 4096, bloom: true, fxaa: true, shadows: true, ssao: true },
+  medium: { pixelRatio: 1.25, shadowMap: 2048, bloom: true, fxaa: true, shadows: true, ssao: true },
+  low:    { pixelRatio: 1.0, shadowMap: 1024, bloom: false, fxaa: false, shadows: true, ssao: false },
+};
+
+// Filmic grade: contrast, saturation, warm tint and vignette — the
+// desaturated-warm look that reads as "tactical shooter".
+const GradeShader = {
+  uniforms: {
+    tDiffuse: { value: null },
+    contrast: { value: 1.09 }, saturation: { value: 1.14 }, brightness: { value: -0.005 },
+    warmth: { value: 0.028 }, vignette: { value: 0.46 }, vignetteSoft: { value: 0.32 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+  fragmentShader: /* glsl */`
+    varying vec2 vUv; uniform sampler2D tDiffuse;
+    uniform float contrast, saturation, brightness, warmth, vignette, vignetteSoft;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec3 col = c.rgb;
+      col = (col - 0.5) * contrast + 0.5 + brightness;
+      float l = dot(col, vec3(0.2126,0.7152,0.0722));
+      col = mix(vec3(l), col, saturation);
+      col *= vec3(1.0 + warmth, 1.0 + warmth*0.25, 1.0 - warmth*0.6);   // warm
+      float d = distance(vUv, vec2(0.5));
+      float edge = smoothstep(vignetteSoft, 0.82, d);
+      col *= mix(1.0, 1.0 - vignette, edge);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
+    }`,
 };
 
 export class Engine {
@@ -33,7 +60,7 @@ export class Engine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -73,7 +100,7 @@ export class Engine {
 
   _buildLights() {
     // Warm key sun.
-    const sun = new THREE.DirectionalLight(0xfff0d0, 2.7);
+    const sun = new THREE.DirectionalLight(0xffeccb, 3.2);
     this.sunDir = new THREE.Vector3(-0.55, 0.7, 0.45).normalize();
     sun.position.copy(this.sunDir.clone().multiplyScalar(120));
     sun.castShadow = this.quality.shadows;
@@ -89,15 +116,15 @@ export class Engine {
     this.sun = sun;
 
     // Sky/ground bounce.
-    const hemi = new THREE.HemisphereLight(0xcfe0ff, 0xb08a4e, 0.85);
+    const hemi = new THREE.HemisphereLight(0xbcd4ff, 0xa8814a, 0.55);
     this.scene.add(hemi);
 
-    // Soft warm fill so shadowed faces aren't crushed.
-    const amb = new THREE.AmbientLight(0xffe9c8, 0.32);
+    // Soft warm fill so shadowed faces aren't crushed (kept low for contrast).
+    const amb = new THREE.AmbientLight(0xffe6c2, 0.2);
     this.scene.add(amb);
 
     // Cool rim/bounce from the opposite side.
-    const rim = new THREE.DirectionalLight(0x9fb4d8, 0.5);
+    const rim = new THREE.DirectionalLight(0x9fb4d8, 0.42);
     rim.position.set(40, 30, -50);
     this.scene.add(rim);
   }
@@ -156,25 +183,45 @@ export class Engine {
   }
 
   _buildComposer() {
+    const w = window.innerWidth, h = window.innerHeight;
     this.composer = new EffectComposer(this.renderer);
     this.composer.setPixelRatio(Math.min(window.devicePixelRatio, this.quality.pixelRatio));
-    this.composer.setSize(window.innerWidth, window.innerHeight);
+    this.composer.setSize(w, h);
 
     this.renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(this.renderPass);
 
-    this.bloomEnabled = this.quality.bloom;
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.85);
-    if (this.bloomEnabled) this.composer.addPass(this.bloomPass);
-
-    if (this.quality.fxaa) {
-      this.fxaaPass = new ShaderPass(FXAAShader);
-      this._updateFxaa();
-      this.composer.addPass(this.fxaaPass);
+    // Ground-truth ambient occlusion — soft contact shadows in crevices.
+    this.ssaoEnabled = !!this.quality.ssao;
+    if (this.quality.ssao) {
+      this.gtaoPass = new GTAOPass(this.scene, this.camera, w, h);
+      try {
+        this.gtaoPass.output = GTAOPass.OUTPUT.Default;
+        this.gtaoPass.blendIntensity = 1.0;
+        this.gtaoPass.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.0, thickness: 1.0, scale: 1.0, samples: 16, distanceFallOff: 1.0, screenSpaceRadius: false });
+        this.gtaoPass.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 });
+      } catch (e) { console.warn('GTAO config:', e.message); }
     }
 
+    this.bloomEnabled = this.quality.bloom;
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.5, 0.55, 0.82);
+
+    this.gradePass = new ShaderPass(GradeShader);
+
+    this.fxaaPass = this.quality.fxaa ? new ShaderPass(FXAAShader) : null;
+    this._updateFxaa();
+
     this.outputPass = new OutputPass();
+    this._composePasses();
+  }
+
+  // Rebuild the ordered pass list from feature flags.
+  _composePasses() {
+    this.composer.passes = [];
+    this.composer.addPass(this.renderPass);
+    if (this.ssaoEnabled && this.gtaoPass) this.composer.addPass(this.gtaoPass);
+    if (this.bloomEnabled) this.composer.addPass(this.bloomPass);
+    this.composer.addPass(this.gradePass);
+    if (this.fxaaPass) this.composer.addPass(this.fxaaPass);
     this.composer.addPass(this.outputPass);
   }
 
@@ -186,16 +233,12 @@ export class Engine {
   }
 
   setBloom(on) {
-    if (!this.fxaaPass && !this.bloomPass) return;
-    // Rebuild composer passes to toggle bloom cleanly.
-    this.composer.passes = this.composer.passes.filter(p => p !== this.bloomPass);
-    if (on && this.quality.bloom !== false) {
-      // insert bloom before fxaa/output
-      const idx = this.composer.passes.indexOf(this.outputPass);
-      const insertAt = this.fxaaPass ? this.composer.passes.indexOf(this.fxaaPass) : idx;
-      this.composer.passes.splice(insertAt, 0, this.bloomPass);
-    }
-    this.bloomEnabled = on;
+    this.bloomEnabled = on && this.quality.bloom !== false;
+    this._composePasses();
+  }
+  setSSAO(on) {
+    this.ssaoEnabled = on && !!this.gtaoPass;
+    this._composePasses();
   }
 
   setFov(fov) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
@@ -208,6 +251,7 @@ export class Engine {
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
     this.bloomPass?.setSize(w, h);
+    this.gtaoPass?.setSize(w, h);
     this._updateFxaa();
   }
 
