@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node serve.js",
     "dev": "node serve.js",
-    "check": "node tools/checkall.js"
+    "check": "node tools/checkall.js",
+    "test": "node tools/checkall.js",
+    "test:smoke": "node tools/smoketest.mjs",
+    "test:combat": "node tools/combattest.mjs",
+    "shots": "QUALITY=high node tools/shoot.mjs"
   },
   "keywords": [
     "fps",
@@ -19,7 +23,8 @@
   ],
   "license": "MIT",
   "private": true,
-  "dependencies": {
+  "comment": "The game has ZERO runtime dependencies; puppeteer is only used by the headless test tools.",
+  "devDependencies": {
     "puppeteer": "^25.1.0"
   }
 }

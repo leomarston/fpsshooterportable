@@ -31,22 +31,23 @@ try {
   // Wait for the async build to finish.
   await page.waitForFunction('window.__game && window.__game.built === true', { timeout: 40000 });
 
-  // Force a "locked" session (no real pointer lock in headless), start a
-  // round, and auto-fire so the full combat path runs.
-  const start = await page.evaluate(() => {
+  // Force a "locked" session and drive ~10s of simulation with fixed steps
+  // (headless rAF is throttled). Firing in bursts, reloading, sweeping aim
+  // and moving exercises the full AI/combat/FX/pathfinding code paths.
+  await page.evaluate(() => {
     const g = window.__game;
     g.input.locked = true; g.input.enabled = true;
     g.startGame();
-    g.input.buttons.left = true;          // hold fire
-    // nudge the view so shots sweep around
-    return { round: g.round, enemies: g.enemyMgr.enemies.length, weapon: g.weapons.current };
+    for (let i = 0; i < 600; i++) {
+      g.input.buttons.left = (i % 22) < 14;                 // burst fire
+      g.player.yaw += 0.05 * Math.sin(i * 0.05);            // sweep aim
+      if (i % 90 < 30) g.input.keys.add('KeyW'); else g.input.keys.delete('KeyW'); // advance
+      if (i % 150 === 120) g.input.justPressed.add('KeyR'); // reload
+      g.update(1 / 60);
+      g.input.endFrame();
+    }
+    g.input.keys.clear(); g.input.buttons.left = false;
   });
-
-  // Let it run ~3.5s of real frames (rAF drives the loop).
-  for (let i = 0; i < 14; i++) {
-    await new Promise(r => setTimeout(r, 250));
-    await page.evaluate(() => { window.__game.player.yaw += 0.25; }); // sweep aim
-  }
 
   const result = await page.evaluate(() => {
     const g = window.__game;
