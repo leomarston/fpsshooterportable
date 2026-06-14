@@ -282,9 +282,10 @@ export class Engine {
     this.composer.render();
     if (view.vmScene) {
       r.setViewport(vx.x, vx.y, vx.z, vx.w);   // composer may have changed it
+      const prevAC = r.autoClear;
       r.autoClear = false; r.clearDepth();
       r.render(view.vmScene, this.vmCamera);
-      r.autoClear = true;
+      r.autoClear = prevAC;                     // keep split-mode autoClear off between halves
     }
   }
 
@@ -292,6 +293,10 @@ export class Engine {
    * Render the given player views. views = [{camera, vmScene}, ...].
    * Both single and split use the full composer; split renders each half
    * into a stacked viewport so the post-FX matches the normal game.
+   *
+   * In split mode autoClear is forced OFF and the canvas is cleared once up
+   * front: the composer's OutputPass would otherwise clear the whole canvas
+   * for each half (a GL clear ignores the viewport), wiping the first half.
    */
   render(views) {
     const r = this.renderer;
@@ -303,11 +308,15 @@ export class Engine {
     const W = r.domElement.width, H = r.domElement.height, hh = Math.floor(H / 2);
     const rects = [[0, H - hh, W, hh], [0, 0, W, hh]];   // top, bottom (GL y up)
     this.vmCamera.aspect = W / (hh || 1); this.vmCamera.updateProjectionMatrix();
+    const prevAC = r.autoClear;
+    r.setRenderTarget(null); r.setViewport(0, 0, W, H); r.clear();   // one clear for the frame
+    r.autoClear = false;                                            // ...then no clears between halves
     for (let i = 0; i < 2; i++) {
       const [x, y, vw, vh] = rects[i];
       r.setViewport(x, y, vw, vh);
       this._renderView(views[i]);
     }
+    r.autoClear = prevAC;
     r.setViewport(0, 0, W, H);
   }
 

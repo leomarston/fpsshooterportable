@@ -14,6 +14,7 @@ import { CollisionWorld } from '../world/Collision.js';
 import { MapBuilder } from '../world/MapBuilder.js';
 import { Nav } from '../world/Nav.js';
 import { Player } from '../entities/Player.js';
+import { PlayerAvatar } from '../entities/PlayerAvatar.js';
 import { WeaponManager } from '../entities/Weapon.js';
 import { WEAPONS, EQUIPMENT, MONEY_START, MONEY_MAX } from '../entities/WeaponData.js';
 import { Combat } from '../entities/Combat.js';
@@ -25,6 +26,7 @@ const HALF_ROUNDS = 5;       // rounds per half
 const MAX_ROUNDS = 10;       // total rounds in a match
 const CLINCH = 6;            // round-wins needed to take the match
 const ROUND_TIME = 95;       // seconds of live play before CT win by default
+const AV_LAYER = 10;         // base render layer for per-player co-op avatars
 
 export class Game {
   constructor(engine, audio) {
@@ -96,6 +98,36 @@ export class Game {
 
   byEnt(ent) { return this.players.find(p => p.ent === ent) || this.players[0]; }
 
+  // Third-person bodies so co-op players can see each other. Each avatar is on
+  // its own render layer; a player's camera renders every avatar layer except
+  // its own, so you see teammates but not your own body.
+  _setupAvatars() {
+    // reset camera/sun layers to the world-only default
+    for (const slot of this.slots) if (slot.camera) slot.camera.layers.set(0);
+    this.engine.sun?.layers.set(0);
+    if (this.numHumans < 2) return;       // nobody to look at in single-player
+    for (let i = 0; i < this.players.length; i++) {
+      const P = this.players[i], layer = AV_LAYER + i;
+      P.avatar = new PlayerAvatar(this.engine.scene, { color: P.color, name: P.name });
+      P.avatar.setLayer(layer);
+      P.avatar.show(false);
+      this.engine.sun?.layers.enable(layer);                       // cast shadows everyone sees
+      for (let j = 0; j < this.players.length; j++) if (j !== i) this.players[j].camera.layers.enable(layer);
+    }
+  }
+  _disposeAvatars() {
+    for (const P of this.players) if (P.avatar) { P.avatar.dispose(); P.avatar = null; }
+    for (const slot of this.slots) if (slot.camera) slot.camera.layers.set(0);
+    this.engine.sun?.layers.set(0);
+  }
+  _updateAvatars(dt) {
+    for (const P of this.players) {
+      if (!P.avatar) continue;
+      const e = P.ent;
+      P.avatar.update(dt, e.feet, e.yaw, e.pitch, e.alive, Math.hypot(e.vel.x, e.vel.z));
+    }
+  }
+
   _wireCombat() {
     this.combat.onScope = (owner, on) => { const P = owner && owner.hudOwner; if (P) P.hud.showScope(on); };
     this.combat.onHit = (owner, victim, weapon, headshot, killed) => {
@@ -154,8 +186,10 @@ export class Game {
     this.teamSize = Math.max(this.numHumans, Math.min(5, (teamSize | 0) || 1));
     this.engine.setPlayerCount(this.numHumans);
 
+    this._disposeAvatars();
     this.players = [];
     for (let i = 0; i < this.numHumans; i++) this.players.push(this._makePlayer(this.slots[i], i));
+    this._setupAvatars();
 
     this.round = 0; this.wins = [0, 0]; this.lossStreak = [0, 0];
     this.totalKills = 0; this.headshots = 0;
@@ -299,6 +333,7 @@ export class Game {
   }
   quitToMenu() {
     this.state = 'menu'; this.enemyMgr.clearAll(); this.audio.stopAmbient();
+    this._disposeAvatars();
     this.menus.hideAll();
     for (const P of this.players) { P.hud.hide(); P.buyMenu.close(); }
     this.engine.setPlayerCount(1);
@@ -424,6 +459,7 @@ export class Game {
       for (const P of this.players) { P.input.update?.(dt); if (P.buyOpen) P.buyMenu.update(); P.input.endFrame?.(); }
       // buy/freeze time over → auto-deploy anyone still in the menu so the round can start
       if (!this.canBuy()) for (const P of this.players) if (P.buyOpen) this.closeBuy(P);
+      this._updateAvatars(dt);
       this.fx.update(dt);
       return;
     }
@@ -459,6 +495,7 @@ export class Game {
         if (this.frozen) P.hud.setFreeze(Math.max(0, (this._freezeEnd - performance.now()) / 1000));
       }
       this.audio.setListener(this.players[0].camera);
+      this._updateAvatars(dt);
       if (!this.frozen) { this.enemyMgr.update(dt, this._allCombatants()); this._maybePickup(); }
       const ctAlive = this._teamAlive(this._teamForSide('CT')), tAlive = this._teamAlive(this._teamForSide('T'));
       for (const P of this.players) { P.hud.setMatchScore(this._ctWins(), this._tWins(), this._humanSide()); P.hud.setAlive(ctAlive, tAlive); }
@@ -479,6 +516,7 @@ export class Game {
     } else if (this.state === 'roundend') {
       this.enemyMgr.update(dt, []);     // freeze bot fire, keep death anims / idle
       for (const P of this.players) P.ent.update(dt, { frozen: P.ent.alive });
+      this._updateAvatars(dt);
       this._roundCountdown -= dt;
       this.menus.updateRoundCountdown(Math.max(0, Math.ceil(this._roundCountdown)));
       if (this._roundCountdown <= 0) this.nextRound();
