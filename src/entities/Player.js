@@ -146,7 +146,8 @@ export class Player {
     const walking = inp.down('ShiftLeft');
     let maxSpeed = this.crouch ? this.crouchSpeed : (walking ? this.walkSpeed : this.runSpeed);
     if (opts.aiming) maxSpeed *= 0.5;
-    const wish = this._wishDir();
+    if (opts.frozen) maxSpeed = 0;          // freeze time: look but don't move
+    const wish = opts.frozen ? new THREE.Vector3() : this._wishDir();
 
     if (this.onGround) {
       // friction
@@ -159,7 +160,7 @@ export class Player {
       // accelerate
       this._accelerate(wish, maxSpeed, this.accel, dt);
       // jump
-      if (inp.down('Space')) {
+      if (!opts.frozen && inp.down('Space')) {
         this.vel.y = this.jumpVel; this.onGround = false;
         this.audio?.footstep(this.surface, this.eyePos);
       }

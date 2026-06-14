@@ -313,3 +313,12 @@ kbd{display:inline-block;min-width:26px;padding:3px 7px;margin:1px;font-family:v
 #buy-deploy{width:auto;padding:12px 30px}
 .kbd-mini{display:inline-block;margin-left:8px;padding:1px 7px;background:#0c0a07;border:1px solid #1a1409;
   border-radius:3px;font-size:12px;color:#1a1409;background:#e7c878}
+
+/* ===================== Freeze-time banner ===================== */
+#freeze-banner{position:absolute;left:50%;top:20%;transform:translateX(-50%);
+  text-align:center;pointer-events:none}
+.fz-label{font-size:14px;letter-spacing:.34em;color:var(--sand);text-shadow:0 2px 6px #000}
+.fz-time{font-size:46px;font-weight:700;color:#fff;line-height:1;font-variant-numeric:tabular-nums;
+  text-shadow:0 3px 14px #000,0 0 24px #c2a05a55}
+.fz-hint{font-size:12px;letter-spacing:.14em;color:var(--text-dim);margin-top:4px}
+.fz-hint b{color:#fff;background:#2a2317;padding:0 6px;border:1px solid var(--line);border-radius:2px}

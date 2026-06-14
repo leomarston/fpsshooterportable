@@ -38,7 +38,7 @@ try {
     const g = window.__game;
     g.input.locked = true; g.input.enabled = true;
     g.startGame();
-    g.closeBuy();                                   // leave the buy phase -> playing
+    g.closeBuy(); g.frozen = false; g._freezeEnd = 0;                                   // leave the buy phase -> playing
     g.owned.primary = 'ak47'; g._applyOwned(true); g.weapons.equip('ak47');
     for (let i = 0; i < 600; i++) {
       g.input.buttons.left = (i % 22) < 14;                 // burst fire

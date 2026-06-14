@@ -111,7 +111,7 @@ export class WeaponManager {
 
   /* ------------------------------ update ------------------------------ */
 
-  update(dt, playerSpeed01, airborne) {
+  update(dt, playerSpeed01, airborne, frozen = false) {
     const w = this.data;
     if (!w) return;
     this.cooldown = Math.max(0, this.cooldown - dt);
@@ -138,8 +138,9 @@ export class WeaponManager {
     // recoil index decays when not firing
     if (this.sinceShot > 0.18) this.recoilIndex = Math.max(0, this.recoilIndex - dt * 9);
 
-    // firing
-    if (w.type === 'melee') {
+    // firing (disabled during freeze time)
+    if (frozen) { /* no shooting */ }
+    else if (w.type === 'melee') {
       if (this.input.justClicked.left) this._melee();
     } else {
       const wantFire = w.automatic ? this.input.buttons.left : this.input.justClicked.left;

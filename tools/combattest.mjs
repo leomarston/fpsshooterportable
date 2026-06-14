@@ -28,7 +28,7 @@ try {
     const g = window.__game;
     const Vec3 = g.player.feet.constructor;
     g.input.locked = true; g.input.enabled = true;
-    g.startGame(); g.closeBuy(); g.enemyMgr.clearAll();
+    g.startGame(); g.closeBuy(); g.frozen = false; g._freezeEnd = 0; g.enemyMgr.clearAll();
     g.owned.primary = 'ak47'; g._applyOwned(true); g.weapons.equip('ak47'); // automatic -> held fire
     const px = 0, pz = 40, gy = g.world.groundHeight(px, pz, 30);
     g.player.feet.set(px, gy, pz); g.player.vel.set(0, 0, 0);
@@ -58,7 +58,7 @@ try {
     const g = window.__game;
     const Vec3 = g.player.feet.constructor;
     // reset to a fresh round/state
-    g.round = 0; g.nextRound(); g.closeBuy(); g.enemyMgr.clearAll();
+    g.round = 0; g.nextRound(); g.closeBuy(); g.frozen = false; g._freezeEnd = 0; g.enemyMgr.clearAll();
     const px = 0, pz = 40, gy = g.world.groundHeight(px, pz, 30);
     g.player.reset(new Vec3(px, gy, pz)); g.player.armor = 0; // test raw HP damage
     g.player.setLookFrom({ x: 0, y: gy + 1.6, z: 20 }); g.player._updateCamera(0.016);

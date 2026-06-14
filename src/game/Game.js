@@ -43,9 +43,11 @@ export class Game {
     // economy / loadout
     this.money = MONEY_START;
     this.owned = { primary: null, pistol: 'glock', armor: 0, helmet: false };
-    this._buyEnd = 0;        // performance.now() when buy time ends
-    this.buyMenu = null;     // set by main.js
-    this.buyDuration = 22;   // seconds of buy time per round
+    this._buyEnd = 0;          // performance.now() when buy time ends
+    this._freezeEnd = 0;       // when the freeze period ends (== buy end)
+    this.frozen = false;       // freeze time: player can look but not move
+    this.buyMenu = null;       // set by main.js
+    this.freezeDuration = 10;  // seconds of freeze + buy time at round start
   }
 
   async build(onProgress) {
@@ -158,14 +160,16 @@ export class Game {
     this._spawnWave(diff);
 
     this._roundStart = performance.now();
-    this._buyEnd = performance.now() + this.buyDuration * 1000;
+    this._freezeEnd = performance.now() + this.freezeDuration * 1000;
+    this._buyEnd = this._freezeEnd;     // buy time == freeze time
+    this.frozen = true;                 // locked in place until freeze ends
     this.hud.setRound(this.round);
     this.hud.setMoney(this.money);
     this.hud.setEnemies(this.enemyMgr.aliveCount);
     this.audio.stinger('roundstart');
     this._endDelay = 0;
 
-    // open the buy phase
+    // open the buy phase (freeze time)
     this.openBuy(true);
   }
 
@@ -180,6 +184,7 @@ export class Game {
     this._returnState = roundStart ? 'playing' : this.state;
     this.state = 'buy';
     this.input.exitLock();
+    this.hud.setFreeze(0);
     this.buyMenu?.open(this);
   }
   closeBuy() {
@@ -393,6 +398,7 @@ export class Game {
 
     if (this.state === 'buy') {
       // freeze time: world holds, only the buy menu ticks
+      if (this.frozen && performance.now() >= this._freezeEnd) this.frozen = false;
       this.buyMenu?.update();
       this.hud.setMoney(this.money);
       this.fx.update(dt);
@@ -400,13 +406,20 @@ export class Game {
     }
 
     if (this.state === 'playing') {
+      // end of freeze time -> round goes live
+      if (this.frozen && performance.now() >= this._freezeEnd) {
+        this.frozen = false;
+        this.hud.setFreeze(0);
+        this.hud.announce('GO!', 'ROUND LIVE', 900, '#36c46a');
+        this.audio.stinger('roundstart');
+      }
       const aiming = this.weapons.adsAmount > 0.3 || this.weapons.scoped;
-      this.player.update(dt, { aiming });
+      this.player.update(dt, { aiming, frozen: this.frozen });
       const speed01 = Math.min(1, Math.hypot(this.player.vel.x, this.player.vel.z) / this.player.runSpeed);
-      this.weapons.update(dt, speed01, !this.player.onGround);
+      this.weapons.update(dt, speed01, !this.player.onGround, this.frozen);
       this.audio.setListener(this.engine.camera);
-      this.enemyMgr.update(dt, this.player);
-      this._maybePickup();
+      if (!this.frozen) { this.enemyMgr.update(dt, this.player); this._maybePickup(); }
+      if (this.frozen) this.hud.setFreeze(Math.max(0, (this._freezeEnd - performance.now()) / 1000));
 
       // HUD
       this.hud.setHealth(this.player.health);
@@ -417,7 +430,7 @@ export class Game {
       this.hud.updateRadar(this.player, this.enemyMgr.enemies, this.mapInfo.sites);
       this.hud.setEnemies(this.enemyMgr.aliveCount);
       this.hud.setLocation(this._zoneName(this.player.feet));
-      this.hud.setBuyTime(this.canBuy() ? this.buyTimeLeft() : 0);
+      this.hud.setBuyTime((!this.frozen && this.canBuy()) ? this.buyTimeLeft() : 0);
 
       // round end?
       if (this.enemyMgr.aliveCount === 0) {

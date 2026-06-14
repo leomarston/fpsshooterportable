@@ -69,6 +69,7 @@ export class HUD {
       ammoTicks: $('ammo-ticks'), reloadHint: $('reload-hint'), weaponSlots: $('weapon-slots'),
       moneyVal: $('money-val'), moneyGain: $('money-gain'), streak: $('streak-val'),
       buyHint: $('buy-hint'), buyTime: $('buy-time'),
+      freezeBanner: $('freeze-banner'), freezeTime: $('freeze-time'),
       radar: $('radar-canvas'), radarLoc: $('radar-loc'), announce: $('announce'),
     };
     this.rctx = this.el.radar.getContext('2d');
@@ -155,6 +156,13 @@ export class HUD {
       h.classList.remove('hidden');
       this.el.buyTime.textContent = '0:' + String(Math.ceil(secs)).padStart(2, '0');
     } else h.classList.add('hidden');
+  }
+  setFreeze(secs) {
+    const b = this.el.freezeBanner; if (!b) return;
+    if (secs > 0) {
+      b.classList.remove('hidden');
+      this.el.freezeTime.textContent = '0:' + String(Math.ceil(secs)).padStart(2, '0');
+    } else b.classList.add('hidden');
   }
   setLocation(name) { if (this.el.radarLoc) this.el.radarLoc.textContent = name; }
 

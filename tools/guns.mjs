@@ -23,7 +23,7 @@ try {
   await page.evaluate(() => {
     const g = window.__game;
     g.input.locked = true; g.input.enabled = true;
-    g.startGame(); g.closeBuy();
+    g.startGame(); g.closeBuy(); g.frozen = false; g._freezeEnd = 0;
     g.state = 'paused';                          // freeze so our poses stick
     // stand somewhere lit, look at a wall for a clean-ish backdrop
     const gy = g.world.groundHeight(0, 36, 30);
