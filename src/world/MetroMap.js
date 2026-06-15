@@ -37,10 +37,12 @@ export class MetroMap {
     model.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true; o.receiveShadow = true;
-      const m = o.material;
-      if (m) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (!m) continue;
+        m.side = THREE.DoubleSide;           // imported floors have inverted normals — show both faces
+        m.shadowSide = THREE.DoubleSide;
         if ('envMapIntensity' in m) m.envMapIntensity = 0.35;
-        m.shadowSide = THREE.FrontSide;
         if (m.map) m.map.anisotropy = 4;
       }
     });
@@ -51,6 +53,10 @@ export class MetroMap {
     const b = world.bounds;
     const bounds = { x0: b.min.x, x1: b.max.x, z0: b.min.z, z1: b.max.z };
 
+    // pin play to the platform level (the area-dominant floor), ignoring the
+    // open roof/concourse slab above it
+    world.searchTop = world.mainFloorY + 2.8;
+
     // sample the floor to derive spawns + objective sites
     const floor = this._floorPoints(world, b);
     const { spawnsCT, spawnsT, sites, center, mainY } = this._layout(floor, b);
@@ -60,8 +66,7 @@ export class MetroMap {
     this.scene.add(this.group);
 
     onProgress?.(1.0, 'Ready');
-    // let the navmesh accept floors up to a bit above the main concourse level
-    return { world, group: this.group, bounds, spawnsCT, spawnsT, sites, center, navMaxFloor: mainY + 3.5 };
+    return { world, group: this.group, bounds, spawnsCT, spawnsT, sites, center, navMaxFloor: world.mainFloorY + 2.6 };
   }
 
   _lights(b, center, mainY) {

@@ -28,6 +28,8 @@ export class MeshWorld {
       new THREE.Vector3(Infinity, Infinity, Infinity),
       new THREE.Vector3(-Infinity, -Infinity, -Infinity));
     this._noFloor = 9999;
+    this.searchTop = Infinity;   // groundHeight ignores floors above this (clamp play to one level)
+    this.mainFloorY = 0;         // area-dominant horizontal level (the playable floor)
   }
 
   /* ----------------------------- build ----------------------------- */
@@ -36,6 +38,7 @@ export class MeshWorld {
   buildFromObject(root) {
     root.updateMatrixWorld(true);
     const tris = []; const norms = []; const surfs = [];
+    const areaByY = new Map();       // horizontal-triangle area per 1m Y bin
     const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
     const ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
     root.traverse((o) => {
@@ -54,13 +57,22 @@ export class MeshWorld {
         b.fromBufferAttribute(pos, i1).applyMatrix4(m);
         c.fromBufferAttribute(pos, i2).applyMatrix4(m);
         ab.subVectors(b, a); ac.subVectors(c, a); n.crossVectors(ab, ac);
-        if (n.lengthSq() < 1e-12) continue;     // degenerate
-        n.normalize();
+        const len = n.length();
+        if (len < 1e-6) continue;                  // degenerate
+        n.multiplyScalar(1 / len);
         tris.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
         norms.push(n.x, n.y, n.z);
         surfs.push(surf);
+        if (Math.abs(n.y) > 0.5) {                  // horizontal → contributes to a floor level
+          const yb = Math.round((a.y + b.y + c.y) / 3);
+          areaByY.set(yb, (areaByY.get(yb) || 0) + len * 0.5);
+        }
       }
     });
+
+    // the playable floor = the Y level with the most horizontal surface area
+    let bestArea = -1;
+    for (const [y, area] of areaByY) if (area > bestArea) { bestArea = area; this.mainFloorY = y; }
 
     this.count = surfs.length;
     this.tri = new Float32Array(tris);
@@ -145,28 +157,28 @@ export class MeshWorld {
     return out;
   }
 
-  // Floor height under (x,z): the highest STANDABLE up-facing surface at/below
-  // fromY — i.e. one with ~1.7m of clear headroom (so ceiling beam-tops and
-  // cramped ledges are rejected). A plain downward ray would hit the ceiling.
+  // Floor height under (x,z): the highest STANDABLE horizontal surface at/below
+  // min(fromY, searchTop). Any roughly-horizontal triangle counts as a floor —
+  // imported maps often have inverted floor normals — and a surface only counts
+  // if it has ~1.7m of clear headroom (rejecting ceilings/beam-tops). searchTop
+  // pins play to a single level (so we don't snap to the open roof above).
   groundHeight(x, z, fromY = 50) {
+    fromY = Math.min(fromY, this.searchTop);
     const arr = this.grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL));
     if (!arr) return this._noFloor;
     const tri = this.tri;
-    // gather every plane intersection at (x,z): height + whether it faces up
-    const ys = [], up = [];
+    const ys = [];                                  // heights of all horizontal surfaces at (x,z)
     for (const i of arr) {
+      if (Math.abs(this.triN[i * 3 + 1]) <= 0.5) continue;
       const o = i * 9;
       const y = floorYAt(x, z, tri[o], tri[o + 1], tri[o + 2], tri[o + 3], tri[o + 4], tri[o + 5], tri[o + 6], tri[o + 7], tri[o + 8]);
-      if (y === null) continue;
-      ys.push(y); up.push(this.triN[i * 3 + 1] > 0.25);
+      if (y !== null) ys.push(y);
     }
-    // highest standable up-facing surface (≥1.7m headroom) at/below fromY —
-    // the platform/concourse, never a cramped beam-top.
     let best = -Infinity;
     for (let k = 0; k < ys.length; k++) {
-      if (!up[k] || ys[k] > fromY + 0.05 || ys[k] <= best) continue;
+      if (ys[k] > fromY + 0.05 || ys[k] <= best) continue;
       let ceil = Infinity;                          // nearest surface above this floor
-      for (let j = 0; j < ys.length; j++) if (ys[j] > ys[k] + 0.05 && ys[j] < ceil) ceil = ys[j];
+      for (let j = 0; j < ys.length; j++) if (ys[j] > ys[k] + 0.1 && ys[j] < ceil) ceil = ys[j];
       if (ceil - ys[k] >= 1.7) best = ys[k];        // standable headroom
     }
     return best > -Infinity ? best : this._noFloor;
