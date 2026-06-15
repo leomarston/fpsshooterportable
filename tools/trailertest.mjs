@@ -39,6 +39,22 @@ try {
       spawnDist: +Math.hypot(ct.x - tt.x, ct.z - tt.z).toFixed(1),
       maxMove: +maxMove.toFixed(2), lo: +lo.toFixed(2), hi: +hi.toFixed(2),
       bots: g.enemyMgr.enemies.length, state: g.state,
+      // doors: count + confirm at least one toggles its collision passable
+      doors: (g.mapInfo.doors || []).length,
+      doorToggles: (() => {
+        const ds = g.mapInfo.doors || []; const THREE = w.bounds.min.constructor;
+        for (const d of ds) {
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const o = new THREE(d.center.x - dx * 1.6, d.center.y, d.center.z - dz * 1.6), dir = new THREE(dx, 0, dz);
+            w.setDoorOpen(d.id, false); const hC = w.raycast(o, dir, 3.2, true);
+            w.setDoorOpen(d.id, true); const hO = w.raycast(o, dir, 3.2, true);
+            w.setDoorOpen(d.id, false);
+            const cD = hC ? hC.dist : 99, oD = hO ? hO.dist : 99;
+            if (hC && hC.dist < 2.2 && oD - cD > 0.05) return true;   // panel skipped when open
+          }
+        }
+        return false;
+      })(),
     };
   });
   console.log('  ' + JSON.stringify(r));
@@ -48,6 +64,8 @@ try {
   A(r.maxMove > 3, 'player can run from spawn (open ground, not boxed in: ' + r.maxMove + 'm)');
   A(r.lo > r.mainFloorY - 3, 'player never falls into the void (lo=' + r.lo + ')');
   A(r.bots >= 1, 'bots spawned on the trailer park');
+  A(r.doors >= 1, 'hinged doors found (' + r.doors + ')');
+  A(r.doorToggles, 'a door opens (its collision becomes passable)');
 
   // first-person screenshot facing the enemy spawn
   await page.evaluate(() => {

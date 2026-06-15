@@ -30,29 +30,27 @@ export class MeshWorld {
     this._noFloor = 9999;
     this.searchTop = Infinity;   // groundHeight ignores floors above this (clamp play to one level)
     this.mainFloorY = 0;         // area-dominant horizontal level (the playable floor)
+    this.triDoor = null;         // per-triangle door id (-1 = static); door tris skip when open
+    this.doorOpen = [];          // open state per door id
   }
 
   /* ----------------------------- build ----------------------------- */
 
-  // Build from a THREE.Object3D (world-space triangles of all its meshes).
-  buildFromObject(root) {
+  // Build from a THREE.Object3D. `doorMeshes` are dynamic door panels whose
+  // (closed-position) triangles can be toggled out of collision when opened.
+  buildFromObject(root, doorMeshes = []) {
     root.updateMatrixWorld(true);
-    const tris = []; const norms = []; const surfs = [];
+    const tris = [], norms = [], surfs = [], triDoor = [];
     const areaByY = new Map();       // horizontal-triangle area per 1m Y bin
     const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
     const ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
-    root.traverse((o) => {
-      if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+    const doorSet = new Set(doorMeshes);
+    const addMesh = (o, doorId) => {
       const surf = this._surfaceOf(o);
-      const g = o.geometry;
-      const pos = g.attributes.position;
-      const idx = g.index;
-      const m = o.matrixWorld;
+      const g = o.geometry, pos = g.attributes.position, idx = g.index, m = o.matrixWorld;
       const triCount = idx ? idx.count / 3 : pos.count / 3;
       for (let t = 0; t < triCount; t++) {
-        const i0 = idx ? idx.getX(t * 3) : t * 3;
-        const i1 = idx ? idx.getX(t * 3 + 1) : t * 3 + 1;
-        const i2 = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+        const i0 = idx ? idx.getX(t * 3) : t * 3, i1 = idx ? idx.getX(t * 3 + 1) : t * 3 + 1, i2 = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
         a.fromBufferAttribute(pos, i0).applyMatrix4(m);
         b.fromBufferAttribute(pos, i1).applyMatrix4(m);
         c.fromBufferAttribute(pos, i2).applyMatrix4(m);
@@ -61,14 +59,15 @@ export class MeshWorld {
         if (len < 1e-6) continue;                  // degenerate
         n.multiplyScalar(1 / len);
         tris.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-        norms.push(n.x, n.y, n.z);
-        surfs.push(surf);
-        if (Math.abs(n.y) > 0.5) {                  // horizontal → contributes to a floor level
+        norms.push(n.x, n.y, n.z); surfs.push(surf); triDoor.push(doorId);
+        if (doorId < 0 && Math.abs(n.y) > 0.5) {    // static horizontal → floor level
           const yb = Math.round((a.y + b.y + c.y) / 3);
           areaByY.set(yb, (areaByY.get(yb) || 0) + len * 0.5);
         }
       }
-    });
+    };
+    root.traverse((o) => { if (o.isMesh && o.geometry && o.geometry.attributes.position && !doorSet.has(o)) addMesh(o, -1); });
+    doorMeshes.forEach((o, i) => { if (o.geometry && o.geometry.attributes.position) { o.updateWorldMatrix(true, false); addMesh(o, i); } });
 
     // the playable floor = the Y level with the most horizontal surface area
     let bestArea = -1;
@@ -78,6 +77,8 @@ export class MeshWorld {
     this.tri = new Float32Array(tris);
     this.triN = new Float32Array(norms);
     this.triS = new Uint8Array(surfs);
+    this.triDoor = Int16Array.from(triDoor);
+    this.doorOpen = new Array(doorMeshes.length).fill(false);
 
     // bucket into the XZ grid + record min/max + wall cells (for the minimap)
     const wallCells = new Set();
@@ -120,6 +121,9 @@ export class MeshWorld {
     return 0; // concrete / tile
   }
 
+  // Toggle a door's collision (open = passable).
+  setDoorOpen(id, v) { if (id >= 0 && id < this.doorOpen.length) this.doorOpen[id] = v; }
+
   /* --------------------------- ray query --------------------------- */
 
   // Nearest triangle hit along origin+dir*t, t in (eps, maxDist].
@@ -129,8 +133,9 @@ export class MeshWorld {
     const ex = ox + dx * maxDist, ez = oz + dz * maxDist;
     const cells = this._segCells(ox, oz, ex, ez);
     let bestT = maxDist, bi = -1;
-    const tri = this.tri;
+    const tri = this.tri, td = this.triDoor, open = this.doorOpen;
     for (const i of cells) {
+      if (td && td[i] >= 0 && open[td[i]]) continue;     // open door → no collision
       const o = i * 9;
       const t = rayTri(ox, oy, oz, dx, dy, dz,
         tri[o], tri[o + 1], tri[o + 2], tri[o + 3], tri[o + 4], tri[o + 5], tri[o + 6], tri[o + 7], tri[o + 8]);

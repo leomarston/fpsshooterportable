@@ -9,9 +9,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { MeshWorld } from './MeshWorld.js';
+import { Door } from './Door.js';
 
 const ASSET = 'assets/maps/trailer/Trailer_Park.glb';
-const SCALE = 0.001;          // mm -> m
+const SCALE = 0.0088;          // calibrated so doors ≈ 2.0m (model unit ≈ 8.8mm)
 
 export class TrailerParkMap {
   constructor(scene, engine) {
@@ -38,12 +39,22 @@ export class TrailerParkMap {
     gltf.scene.updateMatrixWorld(true);
     // find the lot from the ORIGINAL named meshes (merging discards object names)
     const lot = this._densityLot(gltf.scene);
-    const merged = this._mergeByMaterial(gltf.scene);
+    // swinging door panels (not the static frame, and person-sized — skip
+    // cabinet/handle bits) — kept out of the merge so they can hinge
+    const doorPanels = [];
+    const dtmp = new THREE.Box3();
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh || !o.geometry || !/door/i.test(o.name || '') || /frame/i.test(o.name || '')) return;
+      o.geometry.computeBoundingBox(); dtmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+      if (dtmp.max.y - dtmp.min.y > 1.2) doorPanels.push(o);     // real doors only
+    });
+    const merged = this._mergeByMaterial(gltf.scene, new Set(doorPanels));
     this.group.add(merged);
     this.scene.add(this.group);
 
     onProgress?.(0.75, 'Building collision…');
-    const world = new MeshWorld().buildFromObject(merged);
+    const world = new MeshWorld().buildFromObject(merged, doorPanels);
+    const doors = doorPanels.map((m, i) => new Door(this.group, m, i));
     const b = world.bounds;
     const bounds = { x0: b.min.x, x1: b.max.x, z0: b.min.z, z1: b.max.z };
     world.searchTop = world.mainFloorY + 3.0;        // ground + trailer-interior floors, not roofs
@@ -52,14 +63,14 @@ export class TrailerParkMap {
     this._lights(lot, world.mainFloorY);
 
     onProgress?.(1.0, 'Ready');
-    return { world, group: this.group, bounds, lot, ...layout, navMaxFloor: world.mainFloorY + 2.8 };
+    return { world, group: this.group, bounds, lot, doors, ...layout, navMaxFloor: world.mainFloorY + 2.8 };
   }
 
   // Collapse the many small meshes into one mesh per material (fewer draw calls).
-  _mergeByMaterial(root) {
+  _mergeByMaterial(root, skip = new Set()) {
     const groups = new Map();   // material -> [geometry baked to world]
     root.traverse((o) => {
-      if (!o.isMesh || !o.geometry || !o.geometry.attributes.position) return;
+      if (!o.isMesh || !o.geometry || !o.geometry.attributes.position || skip.has(o)) return;
       const mat = Array.isArray(o.material) ? o.material[0] : o.material;
       let g = o.geometry.clone();
       g.applyMatrix4(o.matrixWorld);
@@ -93,7 +104,7 @@ export class TrailerParkMap {
   // of all built (non-scenery) meshes, then bound the meshes within RADIUS of
   // it. This ignores the long tree-lined road and the odd far outlier.
   _densityLot(root) {
-    const RADIUS = 26;
+    const RADIUS = 45;
     const skipRe = /tree|grass|soil|background|fence|lamp|antenna|plant|flower|road|dirt|sand|sky|terrain/i;
     const c = new THREE.Vector3(), box = new THREE.Box3();
     const cents = [];

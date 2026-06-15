@@ -21,9 +21,10 @@ const MAP = {
   KeyQ: 'KeyO',           // switch weapon
   KeyG: 'KeyY',           // pickup
   KeyB: 'KeyU',           // buy
+  KeyE: 'KeyH',           // use / open door
 };
 const P2_KEYS = new Set(['KeyI', 'KeyJ', 'KeyK', 'KeyL', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'ShiftRight', 'Slash', 'KeyP', 'KeyO', 'Quote', 'Period', 'KeyU', 'KeyY']);
+  'ShiftRight', 'Slash', 'KeyP', 'KeyO', 'Quote', 'Period', 'KeyU', 'KeyY', 'KeyH']);
 
 export class KeyboardInput2 {
   constructor() {

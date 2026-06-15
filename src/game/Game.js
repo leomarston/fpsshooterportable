@@ -154,6 +154,24 @@ export class Game {
     }
   }
 
+  // Animate any hinged doors on the current map.
+  _updateDoors(dt) {
+    const doors = this.mapInfo && this.mapInfo.doors;
+    if (doors) for (const d of doors) d.update(dt);
+  }
+
+  // Press E near a door to open/close it (and toggle its collision).
+  _tryDoor(P) {
+    const doors = this.mapInfo && this.mapInfo.doors;
+    if (!doors || !doors.length || !P.ent.alive) return;
+    const eye = P.ent.eyePos; let best = null, bd = 2.6;
+    for (const d of doors) {
+      const dist = Math.hypot(eye.x - d.center.x, eye.z - d.center.z);
+      if (dist < bd) { bd = dist; best = d; }
+    }
+    if (best) { const open = best.toggle(); this.world.setDoorOpen(best.id, open); this.audio.ui?.('click'); }
+  }
+
   _wireCombat() {
     this.combat.onScope = (owner, on) => { const P = owner && owner.hudOwner; if (P) P.hud.showScope(on); };
     this.combat.onHit = (owner, victim, weapon, headshot, killed) => {
@@ -517,7 +535,7 @@ export class Game {
       for (const P of this.players) { P.input.update?.(dt); if (P.buyOpen) P.buyMenu.update(); P.input.endFrame?.(); }
       // buy/freeze time over → auto-deploy anyone still in the menu so the round can start
       if (!this.canBuy()) for (const P of this.players) if (P.buyOpen) this.closeBuy(P);
-      this._updateAvatars(dt);
+      this._updateAvatars(dt); this._updateDoors(dt);
       this.fx.update(dt);
       return;
     }
@@ -531,6 +549,7 @@ export class Game {
       for (const P of this.players) {
         P.input.update?.(dt);
         if (this.frozen && P.input.pressed && P.input.pressed('KeyB') && !P.buyOpen) this.openBuy(P);
+        if (P.input.pressed && P.input.pressed('KeyE')) this._tryDoor(P);
         if (!P.ent.alive) {
           if (!P.deadHandled) {
             P.deadHandled = true; P.deaths++; P.streak = 0; P.hud.setStreak(0);
@@ -553,7 +572,7 @@ export class Game {
         if (this.frozen) P.hud.setFreeze(Math.max(0, (this._freezeEnd - performance.now()) / 1000));
       }
       this.audio.setListener(this.players[0].camera);
-      this._updateAvatars(dt);
+      this._updateAvatars(dt); this._updateDoors(dt);
       if (!this.frozen) { this.enemyMgr.update(dt, this._allCombatants()); this._maybePickup(); }
       const ctAlive = this._teamAlive(this._teamForSide('CT')), tAlive = this._teamAlive(this._teamForSide('T'));
       for (const P of this.players) { P.hud.setMatchScore(this._ctWins(), this._tWins(), this._sideOfTeam(P.ent.team)); P.hud.setAlive(ctAlive, tAlive); }
@@ -574,7 +593,7 @@ export class Game {
     } else if (this.state === 'roundend') {
       this.enemyMgr.update(dt, []);     // freeze bot fire, keep death anims / idle
       for (const P of this.players) P.ent.update(dt, { frozen: P.ent.alive });
-      this._updateAvatars(dt);
+      this._updateAvatars(dt); this._updateDoors(dt);
       this._roundCountdown -= dt;
       this.menus.updateRoundCountdown(Math.max(0, Math.ceil(this._roundCountdown)));
       if (this._roundCountdown <= 0) this.nextRound();
