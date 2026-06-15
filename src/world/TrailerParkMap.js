@@ -12,6 +12,7 @@ import { MeshWorld } from './MeshWorld.js';
 import { Door } from './Door.js';
 
 const ASSET = 'assets/maps/trailer/Trailer_Park.glb';
+const PROPS = 'assets/maps/trailer/Trailer_Park_Props.glb';   // placed interior furniture
 const SCALE = 0.0088;          // calibrated so doors ≈ 2.0m (model unit ≈ 8.8mm)
 
 export class TrailerParkMap {
@@ -23,36 +24,39 @@ export class TrailerParkMap {
   }
 
   build(onProgress) {
-    onProgress?.(0.15, 'Loading trailer park…');
-    return new Promise((resolve, reject) => {
-      new GLTFLoader().load(ASSET, (gltf) => {
-        try { resolve(this._assemble(gltf, onProgress)); }
-        catch (e) { reject(e); }
-      }, (ev) => { if (ev && ev.total) onProgress?.(0.15 + 0.45 * (ev.loaded / ev.total), 'Loading trailer park…'); },
-        (err) => reject(err instanceof Error ? err : new Error('GLB load failed')));
-    });
+    const loader = new GLTFLoader();
+    const load = (url) => new Promise((res, rej) => loader.load(url, res, undefined, (e) => rej(e instanceof Error ? e : new Error('GLB load failed'))));
+    return (async () => {
+      onProgress?.(0.12, 'Loading trailer park…');
+      const main = await load(ASSET);
+      onProgress?.(0.42, 'Loading interiors…');
+      const props = await load(PROPS);             // furnished interiors live here
+      const root = new THREE.Group();
+      root.add(main.scene); root.add(props.scene);
+      return this._assemble(root, onProgress);
+    })();
   }
 
-  _assemble(gltf, onProgress) {
+  _assemble(root, onProgress) {
     onProgress?.(0.62, 'Merging geometry…');
-    gltf.scene.scale.setScalar(SCALE);
-    gltf.scene.updateMatrixWorld(true);
+    root.scale.setScalar(SCALE);
+    root.updateMatrixWorld(true);
     // find the lot from the ORIGINAL named meshes (merging discards object names)
-    const lot = this._densityLot(gltf.scene);
+    const lot = this._densityLot(root);
     // swinging door panels (not the static frame, and person-sized — skip
     // cabinet/handle bits) — kept out of the merge so they can hinge
     const doorPanels = [];
     const dtmp = new THREE.Box3();
-    gltf.scene.traverse((o) => {
+    root.traverse((o) => {
       if (!o.isMesh || !o.geometry || !/door/i.test(o.name || '') || /frame/i.test(o.name || '')) return;
       o.geometry.computeBoundingBox(); dtmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
       if (dtmp.max.y - dtmp.min.y > 1.2) doorPanels.push(o);     // real doors only
     });
-    const merged = this._mergeByMaterial(gltf.scene, new Set(doorPanels));
+    const merged = this._mergeByMaterial(root, new Set(doorPanels));
     this.group.add(merged);
     this.scene.add(this.group);
 
-    onProgress?.(0.75, 'Building collision…');
+    onProgress?.(0.78, 'Building collision…');
     const world = new MeshWorld().buildFromObject(merged, doorPanels);
     const doors = doorPanels.map((m, i) => new Door(this.group, m, i));
     const b = world.bounds;
@@ -95,7 +99,15 @@ export class TrailerParkMap {
       } else {
         for (const g of geos) { const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true; out.add(m); }
       }
-      if (mat) { mat.side = THREE.DoubleSide; mat.shadowSide = THREE.DoubleSide; if ('envMapIntensity' in mat) mat.envMapIntensity = 0.4; }
+      if (mat) {
+        mat.side = THREE.DoubleSide; mat.shadowSide = THREE.DoubleSide;
+        if ('envMapIntensity' in mat) mat.envMapIntensity = 0.4;
+        // foliage cards are alpha-cutout sprites — without it the transparent
+        // background renders as solid black ("black trees")
+        if (/tree|plant|leaf|foliage|bush|hedge|branch/i.test(mat.name || '')) {
+          mat.alphaTest = 0.5; mat.transparent = false; mat.depthWrite = true;
+        }
+      }
     }
     return out;
   }
