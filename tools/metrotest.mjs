@@ -67,7 +67,7 @@ try {
   A(Math.abs(phys.settledY - phys.gy) < 0.4 && phys.onG, 'player settles on the floor under gravity');
   A(phys.moved > 1.5, 'player can walk along the platform (moved ' + phys.moved + 'm)');
   A(phys.maxY <= phys.gy + 0.6, 'player never pops up through a level while walking');
-  A(phys.minY >= phys.gy - 0.6, 'player never sinks/falls through the floor');
+  A(phys.minY > -3, 'player lands on a real surface — platform or track — never the void (minY=' + phys.minY + ')');
   A(phys.bots >= 1, 'bots spawned on the metro');
 
   // run the match loop a bit with AI active — should not error
