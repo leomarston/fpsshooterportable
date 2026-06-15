@@ -13,6 +13,7 @@ import { Forge } from '../core/AssetForge.js';
 import { CollisionWorld } from '../world/Collision.js';
 import { MapBuilder } from '../world/MapBuilder.js';
 import { MetroMap } from '../world/MetroMap.js';
+import { TrailerParkMap } from '../world/TrailerParkMap.js';
 import { Nav } from '../world/Nav.js';
 import { Player } from '../entities/Player.js';
 import { PlayerAvatar } from '../entities/PlayerAvatar.js';
@@ -63,16 +64,21 @@ export class Game {
 
     // tear down a previously-built map's visuals
     if (this._mapGroup) { scene.remove(this._mapGroup); this._mapGroup = null; }
-    if (this.metro) { this.metro.dispose(); this.metro = null; }
+    if (this._mapObj) { this._mapObj.dispose?.(); this._mapObj = null; }
     this.enemyMgr?.clearAll();
     this._disposeAvatars();
 
     onProgress?.(0.1, 'Forging materials…'); await frame();
     if (mapChoice === 'metro') {
-      this.metro = new MetroMap(scene, this.engine);
-      const info = await this.metro.build(onProgress);
+      this._mapObj = new MetroMap(scene, this.engine);
+      const info = await this._mapObj.build(onProgress);
       this.world = info.world; this.mapInfo = info; this._mapGroup = info.group;
       this.engine.setMood('indoor');
+    } else if (mapChoice === 'trailer') {
+      this._mapObj = new TrailerParkMap(scene, this.engine);
+      const info = await this._mapObj.build(onProgress);
+      this.world = info.world; this.mapInfo = info; this._mapGroup = info.group;
+      this.engine.setMood('desert');
     } else {
       this.world = new CollisionWorld();
       this.map = new MapBuilder(scene, this.world, Forge);
@@ -487,6 +493,12 @@ export class Game {
       if (t < 0.25) return 'SOUTH END';
       if (t > 0.75) return 'NORTH END';
       return t < 0.5 ? 'PLATFORM S' : 'PLATFORM N';
+    }
+    if (this._builtMap === 'trailer') {
+      const c = this.mapInfo.center, d = p.z - c.z;
+      if (d < -8) return 'NORTH LOT';
+      if (d > 8) return 'SOUTH LOT';
+      return 'TRAILER ROW';
     }
     if (p.z < -40) return 'T SPAWN';
     if (p.x > 15) return p.z > 24 ? 'BOMBSITE A' : 'LONG A';

@@ -1,7 +1,7 @@
 {
   "name": "fpsshooterportable",
   "version": "1.0.0",
-  "description": "OPERATION: DESERT STORM \u2014 a CS:GO-style browser FPS with a de_dust2-inspired map. Pure WebGL (Three.js), Web Audio synthesized SFX, custom physics and bot AI. No build step, no runtime dependencies.",
+  "description": "OPERATION: DESERT STORM — a CS:GO-style browser FPS with a de_dust2-inspired map. Pure WebGL (Three.js), Web Audio synthesized SFX, custom physics and bot AI. No build step, no runtime dependencies.",
   "type": "module",
   "scripts": {
     "start": "node serve.js",
@@ -15,7 +15,8 @@
     "test:match": "node tools/matchflow.mjs",
     "test:versus": "node tools/versus.mjs",
     "test:metro": "node tools/metrotest.mjs",
-    "test:nav": "node tools/navtest.mjs"
+    "test:nav": "node tools/navtest.mjs",
+    "test:trailer": "node tools/trailertest.mjs"
   },
   "keywords": [
     "fps",
